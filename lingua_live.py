@@ -11,16 +11,55 @@
   ⑥ 시험을 보지 않고 시험한다 → 대화 안에 난이도를 심어(probe) 실시간으로 수준을 재고,
                               그 자리에서 말하는 수준을 맞춘다. 세션이 끝나면 전체를
                               분석해 **무엇을 보충할지** 처방한다(축별 약점 → 다음 모드)
+  ⑦ 교정이 대화를 멈추게 하지 않는다 → 교정은 **백그라운드에서** 이뤄지고 화면으로만
+                              간다. 말은 끊기지 않는다(v0.2.0)
+
+v0.2.0에서 바뀐 것(실사용 피드백 2026-07-28: "끊어서 듣는다 · 텀이 너무 길다"):
+튜터가 교정을 **툴 호출로** 하면 모델이 그 호출을 다 생성할 때까지 침묵한다 —
+한 턴에 생성 왕복이 두 번 일어나고, 교정이 꼼꼼할수록 대화가 끊긴다. 자기모순이다.
+그래서 교정을 대화 경로에서 들어냈다: 모델은 **그냥 대화만 하고**, 교정은
+`observe_turn`(논블로킹 백그라운드 훅)에서 별도 LLM이 처리해 화면에 카드로 쌓는다.
 
 의존성은 cosmos.contracts와 표준 라이브러리뿐이다.
 """
 from __future__ import annotations
 
 import json
+import re
+import threading
 import time
 import uuid
 
 from cosmos.contracts import Plugin, ToolContext
+
+_LOCK = threading.RLock()          # 백그라운드 분석과 뷰가 같은 파일을 만진다
+MIN_ANALYZE_CHARS = 12             # "Hey." 같은 한 마디는 분석하지 않는다(비용·소음)
+MAX_CORRECTIONS_PER_TURN = 2       # 한 턴에 두 개까지 — 더 주면 아무것도 안 남는다
+
+# 백그라운드 분석가에게 주는 지시. 튜터(대화하는 모델)와 **다른 역할**이다:
+# 이쪽은 말하지 않고 오직 읽고 판단만 한다. 그래서 대화 지연이 0이다.
+ANALYST_SYSTEM = """You are the silent analyst behind a live language tutor.
+You never speak to the learner. You read one utterance and decide what — if anything —
+is worth teaching. Be strict: most utterances need nothing.
+
+Return STRICT JSON only, no prose, no code fence:
+{"corrections":[{"wrong":"<what they said>","right":"<full natural corrected sentence>",
+                 "note":"<one line in the learner's own language: why>",
+                 "kind":"grammar|vocab|pronunciation|register|fluency",
+                 "tag":"<2-4 word label of the pattern>"}],
+ "words":[{"term":"","reading":"","meaning":"<learner's language>","examples":["",""]}],
+ "level_fit":"below|at|above"}
+
+Rules:
+- At most 2 corrections, and only for errors that a teacher would actually bring up.
+  Natural-but-imperfect speech is fine. Do not correct style unless it blocks meaning.
+- This is a SPEECH transcript: words may be split ("con ver sation"), merged, or cut off
+  mid-word. Those are microphone artifacts, NOT learner errors — ignore them completely.
+- "right" must be the whole sentence rewritten naturally at the learner's level,
+  not a fragment.
+- "words": at most 1, only when the learner clearly lacked a word or used a notable one.
+- "level_fit": was this utterance below / at / above the learner's stated level?
+- If nothing is worth teaching, return {"corrections":[],"words":[],"level_fit":"at"}."""
 
 # ── 어휘: 전부 단일 진실원. 새 언어·모드·상황은 여기 한 줄이면 UI까지 자동 반영된다 ──
 LANGUAGES: dict[str, dict] = {
@@ -131,13 +170,14 @@ def _now() -> str:
 
 class LinguaLive(Plugin):
     name = "lingua"
-    version = "0.1.0"
+    version = "0.2.0"
     description = (
-        "Real-time language tutor. Call this at the START of any language-practice "
-        "conversation (action=start) to load the learner's profile, review queue and "
-        "the teaching policy you must follow. During practice, call action=note_error "
-        "every time the learner makes a mistake, and action=note_word when a word is "
-        "worth remembering. Call action=finish to close the session. "
+        "Real-time language tutor. Call action=start ONCE at the beginning of a language-"
+        "practice conversation to load the learner's profile and the teaching rules you "
+        "must follow. Then just TALK — do not call this tool again while conversing. "
+        "Corrections, vocabulary and level measurement happen automatically in the "
+        "background and appear on the learner's screen. Call action=finish when the "
+        "learner wants to stop, or action=set if they ask to change language/level/mode. "
         "Supports English, Spanish, Japanese, Chinese, German, French, Korean, Arabic."
     )
     parameters = {
@@ -340,29 +380,26 @@ class LinguaLive(Plugin):
 
         lines += [
             "",
-            "TEACHING RULES (follow strictly — they come from the learner's chosen policy):",
+            "TEACHING RULES (follow strictly):",
             f"- Correction policy: {policy['label']} — {policy['instruction']}",
             "- Speak mostly in the target language, one step above the learner's level "
             "(i+1). Keep your turns SHORT so the learner talks more than you do.",
             "- Explanations of grammar/meaning go in the learner's own language, briefly.",
             "- Ask a question at the end of almost every turn — silence kills practice.",
-            "- Call note_error(said, correct, kind, note) for EVERY mistake you notice, "
-            "even when the policy tells you not to mention it aloud. The screen shows it.",
-            "- Call note_word(term, reading, meaning, examples) when a word is worth "
-            "keeping. Give 2 example sentences that use it in a real situation.",
-            f"- Focus on at most {MAX_FOCUS_ITEMS} teaching points this session. "
-            "Ignore minor slips that do not block meaning.",
-            "- Call finish when the learner wants to stop.",
+            "- If the learner stops mid-sentence, WAIT. Do not finish their sentence.",
             "",
-            "CONTINUOUS LEVEL MEASUREMENT (do this without ever calling it a test):",
-            f"- About every {PROBE_EVERY_TURNS} turns, plant ONE structure or word from "
-            f"the level above {data['level']} inside a normal sentence. Do not announce "
-            "it. Watch whether the learner understands it and can respond.",
-            "- Immediately after, call note_probe(probe_level, passed, note) with what you "
-            "planted and whether they handled it.",
-            "- If they pass two probes in a row, RAISE your own speech to that level for "
-            "the rest of the session. If they miss two in a row, drop back a level and "
-            "shorten your sentences. Adapt within the conversation, not after it.",
+            "*** DO NOT CALL ANY TOOL WHILE TALKING. ***",
+            "Corrections, vocabulary cards and level measurement all happen automatically "
+            "in the background and appear on the learner's screen. Calling a tool mid-"
+            "conversation makes you go silent while you write it — that is what broke the "
+            "flow before. Just talk. Only call lingua again for: finish (session end), "
+            "set (the learner asks to change language/level/mode), or status.",
+            "",
+            "CONTINUOUS LEVEL ADAPTATION (no test, no tool call):",
+            f"- About every {PROBE_EVERY_TURNS} turns, slip ONE structure from the level "
+            f"above {data['level']} into a normal sentence. Watch whether they handle it.",
+            "- If they handle two in a row, raise your own level for the rest of the "
+            "session. If they miss two, shorten sentences and simplify. Adapt live.",
         ]
         if due:
             lines += ["", f"REVIEW QUEUE — start with these {len(due)} items "
@@ -414,9 +451,8 @@ class LinguaLive(Plugin):
         if item["id"] not in data["today"]:
             data["today"].append(item["id"])
 
-        ctx.write_log(f"[lingua] ✎ {said or '(발화)'} → {correct}"
-                      + (f" · {note}" if note else "")
-                      + (f" · 반복 {item['seen']}회 → 복습 큐 승격" if promoted else ""))
+        # 피드에는 한 줄만 — 교정 본문은 화면(뷰)이 카드로 보여준다
+        ctx.write_log(f"[lingua] ✎ 교정 1건{' · 복습 큐 승격' if promoted else ''}")
         policy = data["policy"]
         if policy == "flow":
             guidance = ("Logged silently and shown on the learner's screen. "
@@ -570,6 +606,116 @@ class LinguaLive(Plugin):
         summary.append("Then tell them when the cards come back (spaced repetition).")
         return "\n".join(summary)
 
+    # ── 백그라운드 교정 — 대화는 계속 흐른다(v0.2.0 핵심) ────────────────────
+    observes_turns = True
+    _busy = False
+
+    def observe_turn(self, ctx: ToolContext, role: str, text: str) -> None:
+        """사용자 발화 한 턴을 **대화와 무관하게** 분석해 화면에 카드를 쌓는다.
+
+        여기서 무엇을 하든 튜터는 계속 말한다. 이것이 v0.1.0과의 결정적 차이다:
+        예전엔 교정을 툴 호출로 해서, 꼼꼼할수록 대화가 끊겼다.
+        """
+        text = (text or "").strip()
+        if role != "user" or len(text) < MIN_ANALYZE_CHARS:
+            return
+        with _LOCK:
+            data = self._load(ctx)
+            if not data.get("session"):
+                return                       # 세션을 시작하지 않았으면 관여하지 않는다
+            if LinguaLive._busy:
+                return                       # 분석이 밀리면 건너뛴다(대화가 우선)
+            LinguaLive._busy = True
+        try:
+            lang = LANGUAGES[data["language"]]
+            report = self._ask_analyst(ctx, data, text, lang)
+            if report is None:
+                return
+            with _LOCK:
+                data = self._load(ctx)       # 그 사이 바뀌었을 수 있다
+                added = self._absorb(data, report, text)
+                self._save(ctx, data)
+            if added:
+                # 피드에는 **한 줄만**. 교정 본문을 대화창에 쏟으면 읽히지도 않고
+                # 대화 기록을 덮어 버린다(실사용 스크린샷의 그 벽).
+                ctx.write_log(f"[lingua] ✎ 교정 {added}건 — 🧩 화면에서 확인하세요")
+        except Exception as e:
+            print(f"[lingua] 백그라운드 분석 실패: {e}")
+        finally:
+            LinguaLive._busy = False
+
+    def _ask_analyst(self, ctx: ToolContext, data: dict, text: str, lang: dict) -> dict | None:
+        prompt = (f"Target language: {lang['native']} ({data['language']}). "
+                  f"Learner level: {data['level']}. "
+                  f"The learner's own language is Korean — write notes in Korean.\n"
+                  f"Learner just said:\n\"{text}\"")
+        try:
+            raw = ctx.think(prompt, system=ANALYST_SYSTEM)
+        except Exception as e:
+            print(f"[lingua] analyst unavailable: {e}")
+            return None
+        match = re.search(r"\{.*\}", raw or "", re.S)
+        if not match:
+            return None
+        try:
+            report = json.loads(match.group(0))
+        except Exception:
+            return None
+        return report if isinstance(report, dict) else None
+
+    def _absorb(self, data: dict, report: dict, said: str) -> int:
+        """분석 결과를 학습 항목으로 흡수 — 승격·간격 반복 규칙은 그대로 적용된다."""
+        added = 0
+        for raw in (report.get("corrections") or [])[:MAX_CORRECTIONS_PER_TURN]:
+            if not isinstance(raw, dict) or not str(raw.get("right") or "").strip():
+                continue
+            correct = str(raw["right"]).strip()
+            kind = str(raw.get("kind") or "grammar")
+            kind = kind if kind in ERROR_KINDS else "grammar"
+            existing = self._find_similar(data, said, correct)
+            if existing is not None:
+                existing["seen"] = existing.get("seen", 0) + 1
+                existing["last"] = _now()
+                if existing["seen"] >= PROMOTE_AFTER and not existing.get("box"):
+                    existing["box"] = 1      # 반복되는 오류만 복습 큐로(철학 ④)
+                    existing["due"] = data["session"] + SRS_INTERVALS[0]
+                item = existing
+            else:
+                item = {"id": uuid.uuid4().hex, "type": "error", "lang": data["language"],
+                        "said": str(raw.get("wrong") or said).strip(), "correct": correct,
+                        "kind": kind, "note": str(raw.get("note") or "").strip(),
+                        "tag": str(raw.get("tag") or "").strip(),
+                        "examples": [], "seen": 1, "box": 0, "due": 0,
+                        "hits": 0, "misses": 0, "created": _now(), "last": _now()}
+                data["items"].append(item)
+            if item["id"] not in data["today"]:
+                data["today"].append(item["id"])
+            added += 1
+
+        for raw in (report.get("words") or [])[:1]:
+            term = str((raw or {}).get("term") or "").strip()
+            if not term or any(i.get("term") == term and i["lang"] == data["language"]
+                               for i in data["items"]):
+                continue
+            item = {"id": uuid.uuid4().hex, "type": "word", "lang": data["language"],
+                    "term": term, "reading": str(raw.get("reading") or "").strip(),
+                    "meaning": str(raw.get("meaning") or "").strip(), "note": "",
+                    "examples": [str(e) for e in (raw.get("examples") or [])][:2],
+                    "seen": 1, "box": 1, "due": data["session"] + SRS_INTERVALS[0],
+                    "hits": 0, "misses": 0, "created": _now(), "last": _now()}
+            data["items"].append(item)
+            data["today"].append(item["id"])
+            added += 1
+
+        fit = str(report.get("level_fit") or "")
+        if fit in ("below", "at", "above"):
+            # 툴 호출 없이도 수준이 측정된다 — 발화 자체가 probe다(철학 ⑥·⑦의 결합)
+            data["probes"].append({"session": data["session"], "lang": data["language"],
+                                   "level": data["level"], "passed": fit != "below",
+                                   "note": f"level_fit={fit}", "at": _now()})
+            data["probes"] = data["probes"][-200:]
+        return added
+
     # ── 전용 뷰 — 대화가 흘러가도 눈으로 남는 것 ─────────────────────────────
     def view(self, ctx: ToolContext, **params) -> dict:
         """말은 사라진다. 학습자가 붙잡을 수 있는 것은 화면에 남는 카드다.
@@ -620,38 +766,64 @@ class LinguaLive(Plugin):
         }
 
     def _card(self, item: dict, code: str) -> dict:
-        if item.get("type") == "word":
-            return {"title": item.get("term", ""), "reading": item.get("reading", ""),
-                    "subtitle": item.get("meaning", ""), "body": item.get("note", ""),
-                    "lang": code, "tone": "info",
-                    "tags": [f"box {item.get('box', 0)}/{len(SRS_INTERVALS)}"],
-                    "examples": [{"text": e, "translation": ""}
-                                 for e in item.get("examples") or []]}
-        return {"title": item.get("correct", ""), "reading": "",
-                "subtitle": (f"내가 말한 것: {item.get('said')}" if item.get("said") else ""),
-                "body": item.get("note", ""), "lang": code, "tone": "warn",
-                "tags": [ERROR_KINDS.get(item.get("kind", ""), ""),
-                         f"{item.get('seen', 1)}회",
-                         f"box {item.get('box', 0)}/{len(SRS_INTERVALS)}"],
+        """단어 카드 — 뜻·읽기·예문."""
+        return {"title": item.get("term", ""), "reading": item.get("reading", ""),
+                "subtitle": item.get("meaning", ""), "body": item.get("note", ""),
+                "lang": code, "tone": "info",
+                "tags": [f"복습 {item.get('box', 0)}/{len(SRS_INTERVALS)}"],
                 "examples": [{"text": e, "translation": ""}
                              for e in item.get("examples") or []]}
 
+    def _correction(self, item: dict, code: str) -> dict:
+        """교정 카드 — **틀린 것과 고친 것을 나란히**. 문단으로 늘어놓으면 무엇이
+        어떻게 바뀌었는지 읽히지 않는다(v0.1.0의 실패)."""
+        tag = " · ".join(x for x in (
+            item.get("tag") or ERROR_KINDS.get(item.get("kind", ""), ""),
+            f"{item['seen']}번째" if item.get("seen", 1) > 1 else "",
+            f"복습 {item['box']}/{len(SRS_INTERVALS)}" if item.get("box") else "") if x)
+        return {"wrong": item.get("said", ""), "right": item.get("correct", ""),
+                "note": item.get("note", ""), "lang": code, "tag": tag,
+                "examples": [{"text": e, "translation": ""}
+                             for e in item.get("examples") or []]}
+
+    def _split(self, items: list[dict]) -> tuple[list[dict], list[dict]]:
+        return ([i for i in items if i.get("type") != "word"],
+                [i for i in items if i.get("type") == "word"])
+
     def _today_blocks(self, data: dict, code: str) -> list[dict]:
-        cards = [i for i in data["items"] if i["id"] in data["today"]]
-        if not cards:
+        today = [i for i in data["items"] if i["id"] in data["today"]]
+        errors, words = self._split(today)
+        if not today:
             return [{"type": "text", "tone": "muted",
-                     "text": "아직 오늘의 카드가 없습니다. 대화를 시작하면 교정과 새 단어가 "
-                             "여기 쌓입니다 — 🔊를 누르면 발음을 다시 들을 수 있어요."},
+                     "text": "대화를 시작하면 교정과 새 단어가 여기 쌓입니다. "
+                             "말하는 도중에는 끊지 않습니다 — 고칠 것은 이 화면에만 "
+                             "조용히 올라옵니다. 🔊로 발음을 다시 들을 수 있어요."},
                     {"type": "actions", "items": [
                         {"label": "회화 시작", "tool": self.name, "style": "primary",
-                         "args": {"action": "start", "mode": "chat"}},
-                        {"label": "상황극 시작", "tool": self.name,
-                         "args": {"action": "start", "mode": "scene"}},
-                        {"label": "복습만 하기", "tool": self.name,
-                         "args": {"action": "start", "mode": "review"}}]}]
-        return [{"type": "text", "text": f"오늘의 카드 {len(cards)}장 — "
-                                         "노란 카드는 교정, 파란 카드는 새 단어입니다."},
-                {"type": "cards", "items": [self._card(i, code) for i in cards]}]
+                         "args": {"action": "start", "mode": "chat", "_tab": "today"}},
+                        {"label": "상황극", "tool": self.name,
+                         "args": {"action": "start", "mode": "scene", "_tab": "today"}},
+                        {"label": "복습", "tool": self.name,
+                         "args": {"action": "start", "mode": "review", "_tab": "today"}}]}]
+        blocks: list[dict] = [{"type": "chips", "items": [
+            {"label": "오늘 교정", "value": f"{len(errors)}", "tone": "warn"},
+            {"label": "새 단어", "value": f"{len(words)}", "tone": "info"},
+            {"label": "복습 대기", "value": f"{len([i for i in data['items'] if i.get('box') and not i.get('graduated')])}"},
+        ]}]
+        if errors:
+            # 최신이 위로 — 방금 말한 것을 바로 확인하게 한다
+            blocks.append({"type": "correction",
+                           "items": [self._correction(i, code) for i in reversed(errors)]})
+        if words:
+            blocks.append({"type": "text", "tone": "muted", "text": "오늘 만난 표현"})
+            blocks.append({"type": "cards",
+                           "items": [self._card(i, code) for i in reversed(words)]})
+        blocks.append({"type": "actions", "items": [
+            {"label": "이걸로 복습하기", "tool": self.name, "style": "primary",
+             "args": {"action": "start", "mode": "review", "_tab": "today"}},
+            {"label": "오늘 마무리", "tool": self.name,
+             "args": {"action": "finish", "_tab": "report"}}]})
+        return blocks
 
     def _review_blocks(self, data: dict, due: list[dict], code: str) -> list[dict]:
         queued = [i for i in data["items"]
@@ -662,11 +834,16 @@ class LinguaLive(Plugin):
             "caption": f"지금 볼 것 {len(due)}개 · 대기 {len(queued)}개 · "
                        f"간격 {'→'.join(str(s) for s in SRS_INTERVALS)} 세션"}]
         if due:
-            blocks.append({"type": "cards",
-                           "items": [self._card(i, code) for i in due[:10]]})
+            errors, words = self._split(due[:10])
+            if errors:
+                blocks.append({"type": "correction",
+                               "items": [self._correction(i, code) for i in errors]})
+            if words:
+                blocks.append({"type": "cards",
+                               "items": [self._card(i, code) for i in words]})
             blocks.append({"type": "actions", "items": [
                 {"label": "복습 시작", "tool": self.name, "style": "primary",
-                 "args": {"action": "start", "mode": "review"}}]})
+                 "args": {"action": "start", "mode": "review", "_tab": "today"}}]})
         else:
             blocks.append({"type": "text", "tone": "good",
                            "text": "지금 복습할 항목이 없습니다. 잊을 때쯤 다시 꺼내 드릴게요."})

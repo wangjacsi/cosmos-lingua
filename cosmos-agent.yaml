@@ -2,7 +2,7 @@
 # 규격: https://github.com/honeyground-org/cosmos-billy/blob/main/docs/AGENT_GUIDE.md
 id: wangjacsi/cosmos-lingua
 type: feature
-version: 0.1.0
+version: 0.2.0
 contract: plugin/v1
 title: Lingua Live — 실시간 언어 학습
 description: 대화하면서 수준을 재고, 흐름을 끊지 않고 교정하고, 잊을 때쯤 다시 꺼내 주는 실시간 언어 튜터. 영어·스페인어·일본어·중국어·독일어·프랑스어·한국어·아랍어.
