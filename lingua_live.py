@@ -177,7 +177,7 @@ def _now() -> str:
 
 class LinguaLive(Plugin):
     name = "lingua"
-    version = "0.3.0"
+    version = "0.4.0"
     description = (
         "Real-time language tutor. Call action=start ONCE at the beginning of a language-"
         "practice conversation to load the learner's profile and the teaching rules you "
@@ -616,6 +616,7 @@ class LinguaLive(Plugin):
     # ── 백그라운드 교정 — 대화는 계속 흐른다(v0.2.0 핵심) ────────────────────
     observes_turns = True
     _busy = False
+    _pending = ""      # 분석 중에 들어온 최신 발화(버리지 않는다)
 
     def observe_turn(self, ctx: ToolContext, role: str, text: str) -> None:
         """사용자 발화 한 턴을 **대화와 무관하게** 분석해 화면에 카드를 쌓는다.
@@ -631,7 +632,11 @@ class LinguaLive(Plugin):
             if not data.get("session"):
                 return                       # 세션을 시작하지 않았으면 관여하지 않는다
             if LinguaLive._busy:
-                return                       # 분석이 밀리면 건너뛴다(대화가 우선)
+                # 분석 중이면 **버리지 않고 최신 것만 남긴다**. 그냥 건너뛰면 말이
+                # 빠른 학습자의 발화가 통째로 사라진다. 다만 밀린 것을 다 처리하면
+                # 화면이 과거로 뒤덮이므로, 최신 하나만 이어서 본다.
+                LinguaLive._pending = text
+                return
             LinguaLive._busy = True
         try:
             lang = LANGUAGES[data["language"]]
@@ -654,6 +659,10 @@ class LinguaLive(Plugin):
             print(f"[lingua] 백그라운드 분석 실패: {e}")
         finally:
             LinguaLive._busy = False
+            with _LOCK:
+                queued, LinguaLive._pending = LinguaLive._pending, ""
+            if queued:
+                self.observe_turn(ctx, "user", queued)   # 밀린 최신 발화를 이어서
 
     def _ask_analyst(self, ctx: ToolContext, data: dict, text: str, lang: dict) -> dict | None:
         prompt = (f"Target language: {lang['native']} ({data['language']}). "
@@ -661,7 +670,10 @@ class LinguaLive(Plugin):
                   f"The learner's own language is Korean — write notes in Korean.\n"
                   f"Learner just said:\n\"{text}\"")
         try:
-            raw = ctx.think(prompt, system=ANALYST_SYSTEM)
+            # fast: 사고를 끈다. 형식이 정해진 추출이라 정확도는 그대로인데 지연이
+            # 몇 배 줄어든다(실측 8.3s → 1.3s). 실시간 대화 옆에서는 이 차이가
+            # '몇 번째 발화까지 따라잡느냐'를 가른다.
+            raw = ctx.think(prompt, system=ANALYST_SYSTEM, fast=True)
         except Exception as e:
             print(f"[lingua] analyst unavailable: {e}")
             return None
