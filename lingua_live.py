@@ -48,7 +48,8 @@ Return STRICT JSON only, no prose, no code fence:
                  "kind":"grammar|vocab|pronunciation|register|fluency",
                  "tag":"<2-4 word label of the pattern>"}],
  "words":[{"term":"","reading":"","meaning":"<learner's language>","examples":["",""]}],
- "level_fit":"below|at|above"}
+ "level_fit":"below|at|above",
+ "coach":"<at most ONE short English instruction for the live tutor's NEXT reply, or \"\">"}
 
 Rules:
 - At most 2 corrections, and only for errors that a teacher would actually bring up.
@@ -59,7 +60,13 @@ Rules:
   not a fragment.
 - "words": at most 1, only when the learner clearly lacked a word or used a notable one.
 - "level_fit": was this utterance below / at / above the learner's stated level?
-- If nothing is worth teaching, return {"corrections":[],"words":[],"level_fit":"at"}."""
+- "coach": the tutor is ALREADY talking and must not be interrupted. Give at most one
+  short instruction it can fold into its next sentence, e.g.
+  "Recast their sentence using 'we rarely have', then ask a follow-up." or
+  "They handled a B2 structure — raise your level." Leave it empty most of the time;
+  a tutor that is coached every turn stops sounding like a person.
+- If nothing is worth teaching, return
+  {"corrections":[],"words":[],"level_fit":"at","coach":""}."""
 
 # ── 어휘: 전부 단일 진실원. 새 언어·모드·상황은 여기 한 줄이면 UI까지 자동 반영된다 ──
 LANGUAGES: dict[str, dict] = {
@@ -170,7 +177,7 @@ def _now() -> str:
 
 class LinguaLive(Plugin):
     name = "lingua"
-    version = "0.2.0"
+    version = "0.3.0"
     description = (
         "Real-time language tutor. Call action=start ONCE at the beginning of a language-"
         "practice conversation to load the learner's profile and the teaching rules you "
@@ -635,6 +642,10 @@ class LinguaLive(Plugin):
                 data = self._load(ctx)       # 그 사이 바뀌었을 수 있다
                 added = self._absorb(data, report, text)
                 self._save(ctx, data)
+            # 코치 — 분석 결과를 **다음 발화에 얹는다**. 턴을 닫지 않으므로 지금 하는
+            # 말을 끊지 않는다. 세 역할(대화·분석·코치)이 여기서 만난다.
+            if (coach := str(report.get("coach") or "").strip()):
+                ctx.nudge(f"[TUTOR COACH — do not read this aloud] {coach}")
             if added:
                 # 피드에는 **한 줄만**. 교정 본문을 대화창에 쏟으면 읽히지도 않고
                 # 대화 기록을 덮어 버린다(실사용 스크린샷의 그 벽).
