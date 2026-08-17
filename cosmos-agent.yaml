@@ -1,17 +1,41 @@
-# Lingua Live — 코스모스 마켓 에이전트 매니페스트
-# 규격: https://github.com/honeyground-org/cosmos-billy/blob/main/docs/AGENT_GUIDE.md
+# Lingua Live — Cosmos market agent manifest
+# Spec: https://github.com/honeyground-org/cosmos-billy/blob/main/docs/AGENT_GUIDE.md
+#
+# ★The source text is English★ Translations live in `title_i18n` /
+# `description_i18n` — readers see their own language and fall back to English
+# when one is missing. Writing the manifest in a single language locks the agent
+# to readers of that language, which is exactly what v0.4.0 did.
 id: wangjacsi/cosmos-lingua
 type: feature
-version: 0.4.0
+version: 0.5.0
 contract: plugin/v1
-title: Lingua Live — 실시간 언어 학습
-description: 대화하면서 수준을 재고, 흐름을 끊지 않고 교정하고, 잊을 때쯤 다시 꺼내 주는 실시간 언어 튜터. 영어·스페인어·일본어·중국어·독일어·프랑스어·한국어·아랍어.
+title: Lingua Live — live language practice
+# ★설치 화면은 코드를 받기 **전에** 그려진다★ — 그래서 협업하는 방식(무엇을 기억하고
+# 언제 먼저 말을 거는지)이 여기 없으면, 사용자는 설치한 뒤에야 그것을 알게 된다.
+description: A live language tutor that corrects you in the background without interrupting the conversation. It gauges your level while you speak, shows wrong↔right as cards on screen, and brings things back just before you forget. It keeps three things in Cosmos' memory — which language you are learning, roughly how far along, and what keeps tripping you up — so a new session does not start from scratch, and when things are quiet it can offer to pick practice back up. Say "stop correcting me" and it keeps to itself until you ask again. English, Spanish, Japanese, Chinese, German, French, Korean and Arabic.
+title_i18n:
+  ko: Lingua Live — 실시간 언어 학습
+  ja: Lingua Live — リアルタイム言語学習
+  es: Lingua Live — práctica de idiomas en vivo
+  fr: Lingua Live — pratique linguistique en direct
+  de: Lingua Live — Sprachpraxis in Echtzeit
+description_i18n:
+  ko: 대화를 끊지 않고 백그라운드에서 교정하는 실시간 언어 튜터. 말하는 동안 수준을 재고, 틀린 말↔고친 말을 화면 카드로 보여주고, 잊을 때쯤 다시 꺼내 준다. 영어·스페인어·일본어·중국어·독일어·프랑스어·한국어·아랍어.
+  ja: 会話を止めずに背後で訂正するリアルタイム言語チューター。話している間にレベルを測り、誤り↔正しい形を画面カードで見せ、忘れる頃にもう一度出します。英語・スペイン語・日本語・中国語・ドイツ語・フランス語・韓国語・アラビア語。
+  es: Un tutor de idiomas en vivo que te corrige en segundo plano sin interrumpir la conversación. Mide tu nivel mientras hablas, muestra el error↔la forma correcta como tarjetas en pantalla y te lo devuelve justo antes de que lo olvides. Inglés, español, japonés, chino, alemán, francés, coreano y árabe.
+  fr: Un tuteur de langue en direct qui vous corrige en arrière-plan sans interrompre la conversation. Il évalue votre niveau pendant que vous parlez, affiche l'erreur↔la forme correcte sous forme de cartes, et vous les repropose juste avant que vous ne les oubliiez. Anglais, espagnol, japonais, chinois, allemand, français, coréen et arabe.
+  de: Ein Live-Sprachtutor, der dich im Hintergrund korrigiert, ohne das Gespräch zu unterbrechen. Er misst dein Niveau, während du sprichst, zeigt Fehler↔richtige Form als Karten auf dem Bildschirm und holt sie zurück, kurz bevor du sie vergisst. Englisch, Spanisch, Japanisch, Chinesisch, Deutsch, Französisch, Koreanisch und Arabisch.
 author: wangjacsi
 license: MIT
 homepage: https://github.com/wangjacsi/cosmos-lingua
 entry: lingua_live:LinguaLive
 tools:
   - lingua
-capabilities: []          # 표준 역량을 쓰지 않는다 — 학습 기록은 자기 데이터 폴더에만 남는다
+# ★v0.5.0에서 `memory`가 생겼다★ 예전에는 진도가 자기 폴더에만 있어서 Cosmos는 이 사람이
+# 무엇을 배우는지조차 몰랐다 — 그래서 이어가자고 할 재료도, 대화에서 이을 고리도 없었다.
+# ⚠️ 로더가 **코드 ∪ 매니페스트**로 역량을 넓히므로 둘이 어긋나면 승인된 것과 집행되는
+# 것이 갈린다. 코드의 `capabilities`와 반드시 같아야 한다.
+capabilities:
+  - memory
 requires_desktop: false
 requires: []

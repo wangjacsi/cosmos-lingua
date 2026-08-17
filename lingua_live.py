@@ -32,6 +32,8 @@ import uuid
 
 from cosmos.contracts import Plugin, ToolContext
 
+from lingua_i18n import t as _t          # 화면 어휘의 번역(영어 원문 → 사용자 언어)
+
 _LOCK = threading.RLock()          # 백그라운드 분석과 뷰가 같은 파일을 만진다
 MIN_ANALYZE_CHARS = 12             # "Hey." 같은 한 마디는 분석하지 않는다(비용·소음)
 MAX_CORRECTIONS_PER_TURN = 2       # 한 턴에 두 개까지 — 더 주면 아무것도 안 남는다
@@ -69,70 +71,91 @@ Rules:
   {"corrections":[],"words":[],"level_fit":"at","coach":""}."""
 
 # ── 어휘: 전부 단일 진실원. 새 언어·모드·상황은 여기 한 줄이면 UI까지 자동 반영된다 ──
+#
+# ★사람이 읽는 값은 **영어가 원문**이다★(v0.5.0) 화면에 나갈 때 `lingua_i18n.t()`가
+# 사용자 언어로 옮긴다. v0.4.0까지 이 표들은 한국어로 박혀 있었고, 그래서 한국어를
+# 읽지 못하는 사용자는 설치해도 쓸 수 없었다. 새 언어를 더하려면 **코드가 아니라
+# 번역 표**만 늘리면 된다(원칙 1).
+#
+# ★두 언어를 섞지 마라★(함정 28) `LANGUAGES`의 **키**는 배우는 언어이고,
+# 사용자가 화면을 읽는 언어는 `ctx.lang`이다. `label`은 배우는 언어의 **이름**이라
+# 번역 대상이고(한국어 사용자에게 "Spanish"는 "스페인어"), `native`는 그 언어가
+# 자기를 부르는 이름이라 **어느 화면에서도 그대로**다.
 LANGUAGES: dict[str, dict] = {
-    "en": {"label": "영어",     "native": "English",  "locale": "en-US"},
-    "es": {"label": "스페인어", "native": "Español",  "locale": "es-ES"},
-    "ja": {"label": "일본어",   "native": "日本語",    "locale": "ja-JP"},
-    "zh": {"label": "중국어",   "native": "中文",      "locale": "zh-CN"},
-    "de": {"label": "독일어",   "native": "Deutsch",  "locale": "de-DE"},
-    "fr": {"label": "프랑스어", "native": "Français", "locale": "fr-FR"},
-    "ko": {"label": "한국어",   "native": "한국어",    "locale": "ko-KR"},
-    "ar": {"label": "아랍어",   "native": "العربية",  "locale": "ar-SA", "rtl": True},
-    "it": {"label": "이탈리아어", "native": "Italiano", "locale": "it-IT"},
-    "pt": {"label": "포르투갈어", "native": "Português", "locale": "pt-BR"},
-    "ru": {"label": "러시아어", "native": "Русский",  "locale": "ru-RU"},
+    "en": {"label": "English",    "native": "English",   "locale": "en-US"},
+    "es": {"label": "Spanish",    "native": "Español",   "locale": "es-ES"},
+    "ja": {"label": "Japanese",   "native": "日本語",     "locale": "ja-JP"},
+    "zh": {"label": "Chinese",    "native": "中文",       "locale": "zh-CN"},
+    "de": {"label": "German",     "native": "Deutsch",   "locale": "de-DE"},
+    "fr": {"label": "French",     "native": "Français",  "locale": "fr-FR"},
+    "ko": {"label": "Korean",     "native": "한국어",     "locale": "ko-KR"},
+    "ar": {"label": "Arabic",     "native": "العربية",   "locale": "ar-SA", "rtl": True},
+    "it": {"label": "Italian",    "native": "Italiano",  "locale": "it-IT"},
+    "pt": {"label": "Portuguese", "native": "Português", "locale": "pt-BR"},
+    "ru": {"label": "Russian",    "native": "Русский",   "locale": "ru-RU"},
 }
 
 LEVELS: dict[str, str] = {
-    "A1": "생존 표현 — 인사·주문·길찾기",
-    "A2": "일상 대화 — 짧은 문장으로 하루를 말한다",
-    "B1": "의견 말하기 — 이유를 붙여 설명한다",
-    "B2": "토론 — 추상적 주제를 다룬다",
-    "C1": "정교함 — 뉘앙스·관용·격식을 가른다",
+    "A1": "Survival — greetings, ordering, directions",
+    "A2": "Everyday talk — say how your day went in short sentences",
+    "B1": "Opinions — explain with reasons",
+    "B2": "Discussion — handle abstract topics",
+    "C1": "Precision — nuance, idiom and register",
 }
 
 MODES: dict[str, dict] = {
-    "chat":   {"label": "자유 회화", "desc": "관심사로 그냥 떠든다 — 발화량이 목적"},
-    "scene":  {"label": "상황별",    "desc": "역할극으로 실제 상황을 예행연습한다"},
-    "drill":  {"label": "집중 훈련", "desc": "내가 반복해 틀리는 것만 집중적으로"},
-    "review": {"label": "복습",      "desc": "복습 큐만 — 잊기 직전에 다시 만난다"},
-    "shadow": {"label": "섀도잉",    "desc": "듣고 그대로 따라 말한다 — 발음·리듬"},
+    "chat":   {"label": "Free talk",
+               "desc": "Talk about whatever interests you — how much you say is the point"},
+    "scene":  {"label": "Scenes",
+               "desc": "Rehearse a real situation as role-play"},
+    "drill":  {"label": "Drills",
+               "desc": "Only the things you keep getting wrong"},
+    "review": {"label": "Review",
+               "desc": "Review queue only — meet it again just before you forget"},
+    "shadow": {"label": "Shadowing",
+               "desc": "Listen and say it back exactly — pronunciation and rhythm"},
 }
 
 SCENES: dict[str, str] = {
-    "airport":    "공항 — 체크인·환승·수하물",
-    "restaurant": "식당 — 주문·요청·계산",
-    "hotel":      "호텔 — 체크인·요청·문제 해결",
-    "shopping":   "쇼핑 — 가격·교환·환불",
-    "hospital":   "병원 — 증상 설명·처방",
-    "interview":  "면접 — 자기소개·경험·질문",
-    "meeting":    "회의 — 의견·반대·정리",
-    "phone":      "전화 — 안 보이는 상대와의 대화",
-    "smalltalk":  "스몰토크 — 날씨·주말·근황",
-    "directions": "길찾기 — 묻고 알아듣기",
+    "airport":    "Airport — check-in, transfers, baggage",
+    "restaurant": "Restaurant — ordering, requests, paying",
+    "hotel":      "Hotel — check-in, requests, problems",
+    "shopping":   "Shopping — prices, exchanges, refunds",
+    "hospital":   "Clinic — describing symptoms, prescriptions",
+    "interview":  "Interview — introducing yourself, experience, questions",
+    "meeting":    "Meeting — opinions, disagreement, wrapping up",
+    "phone":      "Phone — talking to someone you cannot see",
+    "smalltalk":  "Small talk — weather, the weekend, catching up",
+    "directions": "Directions — asking and understanding the answer",
 }
 
 # 교정 정책 — **이 에이전트에서 가장 중요한 설정 하나**.
 # 교정을 언제 어떻게 주느냐가 학습 곡선을 바꾼다(README §철학 ①).
+#
+# ★`instruction`은 번역하지 않는다★ 그것은 **모델이 읽는 글**이고, 모델은 그것을
+# 읽은 뒤 **사용자의 언어로 말한다**. 지침까지 옮기면 번역 품질이 곧 교습 품질이
+# 되어 언어마다 튜터가 달라진다.
 POLICIES: dict[str, dict] = {
     "flow": {
-        "label": "흐름 우선",
-        "desc": "말로는 절대 끊지 않는다. 교정은 화면 카드로만 — 자신감이 먼저인 단계",
+        "label": "Flow first",
+        "desc": "Never interrupts you. Corrections appear only as cards on screen — "
+                "for when confidence has to come first",
         "instruction": "NEVER interrupt to correct. Do not mention mistakes aloud. "
                        "Log them silently with note_error and keep the conversation moving. "
                        "Praise attempts, not accuracy.",
     },
     "recast": {
-        "label": "되풀이(기본)",
-        "desc": "자연스럽게 올바른 형태로 되받아 준다 — 대화는 끊기지 않는다",
+        "label": "Recast (default)",
+        "desc": "Says your idea back in the correct form — the conversation never stops",
         "instruction": "Do not stop the conversation. When the learner makes a mistake, "
                        "reply naturally but REPEAT their idea back using the correct form "
                        "(a recast), then continue. Log it with note_error. "
                        "Never lecture mid-flow.",
     },
     "focus": {
-        "label": "즉시 교정",
-        "desc": "중요한 오류에서 즉시 끊고 다시 말하게 한다 — 시험·상급자용",
+        "label": "Correct now",
+        "desc": "Stops at important errors and has you say it again — "
+                "for exams and advanced learners",
         "instruction": "When a mistake blocks meaning or repeats a known error, stop the "
                        "flow: name the error briefly, give the correct form, and ask the "
                        "learner to say the whole sentence again (pushed output). "
@@ -141,24 +164,28 @@ POLICIES: dict[str, dict] = {
 }
 
 ERROR_KINDS: dict[str, str] = {
-    "grammar": "문법", "vocab": "어휘", "pronunciation": "발음",
-    "register": "말투·격식", "fluency": "유창성",
+    "grammar": "Grammar", "vocab": "Vocabulary", "pronunciation": "Pronunciation",
+    "register": "Register", "fluency": "Fluency",
 }
 
 # 약점 축 → **다음에 무엇을 할지**. 처방이 철학에서 나온다는 것이 여기서 드러난다:
 # 유창성이 약하면 교정을 더 하는 게 아니라 **덜 한다**(말이 멈추면 학습도 멈추므로).
 PRESCRIPTIONS: dict[str, dict] = {
     "grammar": {"mode": "drill", "policy": None,
-                "say": "문법 오류가 가장 많습니다 — 다음 세션은 집중 훈련으로 "
-                       "같은 구조를 여러 상황에서 반복합니다."},
+                "say": "Grammar errors dominate — the next session drills the same "
+                       "structures across different situations."},
     "vocab": {"mode": "scene", "policy": None,
-              "say": "어휘가 병목입니다 — 상황극으로 옮겨 필요한 말을 실제로 써 보게 합니다."},
+              "say": "Vocabulary is the bottleneck — moving to scenes so you actually "
+                     "use the words you need."},
     "pronunciation": {"mode": "shadow", "policy": None,
-                      "say": "발음·리듬이 약합니다 — 섀도잉으로 듣고 따라 말하기를 늘립니다."},
+                      "say": "Pronunciation and rhythm are weak — more shadowing: "
+                             "listen, then say it back."},
     "register": {"mode": "scene", "policy": "focus",
-                 "say": "말투·격식에서 어긋납니다 — 면접·회의 상황에서 즉시 교정으로 잡습니다."},
+                 "say": "Register slips — interviews and meetings with immediate "
+                        "correction will fix it."},
     "fluency": {"mode": "chat", "policy": "flow",
-                "say": "말이 자주 끊깁니다 — 교정을 낮추고 발화량을 먼저 회복합니다."},
+                "say": "You stall often — lowering correction to get your speaking "
+                       "volume back first."},
 }
 
 PROBE_EVERY_TURNS = 6        # 몇 턴마다 난이도를 하나 심을지(대화를 시험처럼 만들지 않는 간격)
@@ -170,14 +197,67 @@ SRS_INTERVALS = (1, 3, 7, 16, 35)
 MAX_FOCUS_ITEMS = 3          # 한 세션에 다루는 교정 항목 상한(철학 ④)
 PROMOTE_AFTER = 2            # 같은 오류가 이만큼 반복되면 복습 큐로 승격
 
+# ★이 채널이 만든 것은 채널 단위로 걷어낼 수 있다★(모든 자동 산출물의 규칙).
+# 이 에이전트를 떼면 남긴 기억도 함께 거둘 수 있어야 *"붙이고 떼기 쉽다"* 가 참이 된다.
+CHANNEL = "lingua.v1"
+
 
 def _now() -> str:
     return time.strftime("%Y-%m-%d %H:%M")
 
 
+# ── ★내밀 것을 정하는 판정 — 순수 함수★ (v0.5.0) ─────────────────────────────
+#
+# 세상을 안 만지므로 그물이 **모든 갈래를 실제로 지나간다**. 네트워크나 디스크 호출
+# 안에 묻어 두면 낱말만 남기고 동작을 뒤집는 뮤테이션이 그대로 빠져나간다.
+#
+# ⚠️ ★"지금 꺼내도 되는가"는 여기서 묻지 않는다★ 그것은 코스모스가 자세·잡담·침묵·
+# 물린 횟수를 보고 정한다(`contracts/collab.may_offer`). 여기는 *"내밀 것이 있는가"* 만.
+
+# 며칠 쉬면 이어가자고 할 만한가. 하루는 짧다(그날 안 했다고 재촉하는 것은 잔소리다).
+IDLE_DAYS_BEFORE_OFFER = 3
+# 복습이 이만큼 밀려 있으면 날짜와 무관하게 내민다 — 잊기 직전이 이 에이전트의 요점이다.
+DUE_CARDS_BEFORE_OFFER = 5
+
+
+def offer_reason(*, due_cards: int, days_idle: float,
+                 weakest: str = "") -> dict | None:
+    """무엇을 이어가자고 할 것인가. ★내밀 것이 없으면 None★.
+
+    돌려주는 것은 코스모스가 읽을 **재료**이지 완성된 문장이 아니다 — 말은 사용자의
+    언어로 코스모스가 만든다(에이전트가 문장을 박으면 한 언어에 묶인다).
+    """
+    due = max(0, int(due_cards or 0))
+    idle = max(0.0, float(days_idle or 0))
+    if due >= DUE_CARDS_BEFORE_OFFER:
+        # 밀린 복습이 우선이다 — 이것은 **잊는 중인 것**이라 시간이 값을 깎는다.
+        return {"kind": "review", "due": due, "weakest": weakest,
+                "weight": min(0.9, 0.5 + due / 40.0)}
+    if idle >= IDLE_DAYS_BEFORE_OFFER:
+        return {"kind": "resume", "due": due, "days": round(idle),
+                "weakest": weakest, "weight": 0.5}
+    return None
+
+
+def days_between(then: str, now_ts: float, *, parse=None) -> float:
+    """마지막 학습으로부터 며칠. 읽을 수 없는 값은 **0일로 본다**.
+
+    ★모르면 재촉하지 않는 쪽으로 떨어진다★ — 기록이 깨졌다고 매번 이어가자고 하면
+    그 고장이 잔소리로 나타난다.
+    """
+    raw = str(then or "").strip()
+    if not raw:
+        return 0.0
+    reader = parse or (lambda s: time.mktime(time.strptime(s, "%Y-%m-%d %H:%M")))
+    try:
+        return max(0.0, (float(now_ts) - reader(raw)) / 86400.0)
+    except Exception:
+        return 0.0
+
+
 class LinguaLive(Plugin):
     name = "lingua"
-    version = "0.4.0"
+    version = "0.5.0"
     description = (
         "Real-time language tutor. Call action=start ONCE at the beginning of a language-"
         "practice conversation to load the learner's profile and the teaching rules you "
@@ -217,9 +297,145 @@ class LinguaLive(Plugin):
         "required": ["action"],
     }
     author = "wangjacsi"
-    capabilities = []          # 표준 역량 중 쓰는 것이 없다 — 학습 기록은 자기 데이터 폴더에만 남는다
+    # ★`memory`가 생겼다★(v0.5.0) 예전에는 학습 기록이 **자기 폴더에만** 있어서,
+    # 코스모스는 이 사람이 무엇을 배우는지조차 몰랐다. 그래서 대화 중에 스페인어
+    # 얘기가 나와도 잇지 못했고, 이어가자고 할 재료도 없었다(원칙 0 ③).
+    capabilities = ["memory"]
     requires_desktop = False
     view_title = "🗣 Lingua Live"
+
+    # ── ★협업 — 코스모스와 함께 돕는다★ (계약: `cosmos/contracts/collab.py`) ────
+    #
+    # > *"언어를 배우고 싶다는 것에서부터 사용자가 이 에이전트를 설치를 한 것임.
+    # >  따라서 언어를 어떻게 배우고 있으며 진도는 어떻게 나가고 있고 어떤 것을
+    # >  어려워 하고 어떤 도움을 줄수 있어야 하는지를 에이전트와 코스모스가 서로
+    # >  협력을 해서 도움을 줄수 있어야 하는거야."*(Sean 2026-08-17)
+    purpose = ("The user installed this to learn a language, so what matters is which "
+               "language they are working on, how far along they are, and what keeps "
+               "tripping them up.")
+    makes_offers = True
+
+    # ★기억의 규율 — 무엇을 브레인에 올리고 무엇을 여기 두는가★
+    #
+    # 카드 수백 장을 브레인에 넣으면 회상이 그것들로 덮인다(자기점검이 같은 문제를
+    # 69번 기억해 브레인을 덮은 사고와 같은 부류). 그래서 **적고 오래 가는 것만** 올린다:
+    #
+    #   브레인   목표 언어 · 수준 · ★어디가 약한가★ — 나중에도 참이고 대화에서 쓰인다
+    #   자기 폴더 개별 카드 · 복습 일정 · 세션 기록 — 많고 자주 바뀐다
+    brain = {
+        "stores": ("goal", "topic", "preference"),
+        "reads": ("goal", "topic", "preference"),
+        "settled": "The individual flashcards, their review schedule and the per-session "
+                   "logs stay in this agent's own data folder. There can be hundreds of "
+                   "them and they change every session, so putting them in the brain "
+                   "would bury recall under material nobody asks about. What goes to the "
+                   "brain is the small, lasting part: which language is being learned, "
+                   "roughly how far along, and which kind of mistake keeps coming back.",
+    }
+
+    # ── ★협업 — 이어가자고 내민다★ (v0.5.0) ─────────────────────────────────
+    def offer(self, ctx: ToolContext) -> dict | None:
+        """이어갈 만한 것이 있으면 내민다. **때는 코스모스가 고른다.**
+
+        ★말은 여기서 만들지 않는다★ 사용자의 언어로 말할 사람은 코스모스이고,
+        여기서 문장을 박으면 이 에이전트는 그 언어 사용자에게만 쓸모 있게 된다
+        (v0.4.0이 화면 어휘를 한국어로 박아 정확히 그렇게 됐었다).
+        """
+        try:
+            data = self._load(ctx)
+        except Exception:
+            return None
+        reason = offer_reason(
+            due_cards=len(self._due(data)),
+            days_idle=days_between(data.get("updated", ""), time.time()),
+            weakest=self._analyze(data).get("weakest", ""))
+        if not reason:
+            return None
+        lang = LANGUAGES.get(data["language"], {}).get("label", data["language"])
+        if reason["kind"] == "review":
+            say = (f"{reason['due']} {lang} items are due for review"
+                   + (f", mostly {reason['weakest']}" if reason["weakest"] else "")
+                   + " — offer to go through them now.")
+        else:
+            say = (f"It has been about {reason['days']} days since the last "
+                   f"{lang} practice — offer to pick it back up.")
+        return {"say": say, "weight": reason["weight"],
+                # ★트리거★ 사용자가 "그래" 하면 이것이 시작된다.
+                "start": {"tool": self.name,
+                          "args": {"action": "start",
+                                   "mode": "review" if reason["kind"] == "review"
+                                           else data["mode"]}}}
+
+    # ── ★기억 — 적고 오래 가는 것만 브레인으로★ (v0.5.0) ────────────────────
+    #
+    # 개별 카드는 자기 폴더에 남는다(위 `brain["settled"]`). 여기 올리는 셋은
+    # **나중에도 참이고 대화에서 쓰이는 것**이다.
+    def _remember_progress(self, ctx: ToolContext, data: dict) -> None:
+        """무엇을 배우는 중이고 어디가 약한가 — 대화가 그것을 알아야 이어진다."""
+        brain = getattr(ctx, "brain", None)
+        if brain is None:
+            return
+        try:
+            from cosmos.contracts.memory import Entity, Relation, Trust, now_ts
+        except Exception:
+            return
+        code = data.get("language", "")
+        label = LANGUAGES.get(code, {}).get("label", code)
+        if not label:
+            return
+        uid = getattr(ctx, "user_id", "") or ""
+        stamp = now_ts()
+        # 확신 1.0 · provenance="user" — ★어느 언어를 배울지는 **사용자가 정한 것**★이라
+        # 어떤 자동 파이프라인도 덮으면 안 된다(불변 규칙).
+        trust = Trust(confidence=1.0, provenance="user", source_channel=CHANNEL)
+        try:
+            goal_id = brain.upsert_entity(uid, Entity(
+                name=f"Learning {label}", kind="goal",
+                attrs={**trust.to_attrs(), "language": code,
+                       "level": data.get("level", ""),
+                       "last_practised": _now()},
+                valid_from=stamp))
+            if not goal_id:
+                return                    # 사용자가 지운 것은 되살리지 않는다(툼스톤)
+            made = [goal_id]
+            topic_id = brain.upsert_entity(uid, Entity(
+                name=label, kind="topic", attrs={**trust.to_attrs()}, valid_from=stamp))
+            if topic_id:
+                made.append(topic_id)
+                brain.upsert_relation(uid, Relation(
+                    src=goal_id, dst=topic_id, rel="about",
+                    attrs={**trust.to_attrs()}, valid_from=stamp))
+            # ★약한 축은 **성향이 됐을 때만**★ 매 세션 적으면 브레인이 이 하나로 덮인다.
+            weakest = self._analyze(data).get("weakest", "")
+            if weakest and len(data.get("history") or ()) >= PROMOTE_AFTER:
+                pref_id = brain.upsert_entity(uid, Entity(
+                    name=f"Finds {label} {weakest} hard", kind="preference",
+                    attrs={**Trust(confidence=0.7, provenance="extracted",
+                                   source_channel=CHANNEL).to_attrs(),
+                           "language": code, "axis": weakest},
+                    valid_from=stamp))
+                if pref_id:
+                    made.append(pref_id)
+            try:
+                from cosmos.core import provenance
+                provenance.record(brain, uid, self, made, now=stamp)
+            except Exception:
+                pass
+        except Exception as e:
+            ctx.write_log(f"[lingua] could not remember: {e}")
+
+    def _recall_progress(self, ctx: ToolContext) -> str:
+        """★되읽는 문★ — 새 세션이 백지에서 시작하지 않게 한다(원칙 0 ③).
+
+        빈 문자열이면 아직 아무것도 모른다는 뜻이고, 그러면 평소대로 물어보면 된다.
+        """
+        try:
+            hits = ctx.brain_search("language learning goal level", k=4,
+                                    agent=self.name)
+        except Exception:
+            return ""
+        lines = [str(h.get("text") or "").strip() for h in (hits or [])]
+        return " · ".join([line for line in lines if line][:3])
 
     # ── 상태 저장 — 코드(설치 디렉터리)와 분리된 곳에 둔다(업데이트가 진도를 지우지 않게) ──
     def _dir(self, ctx: ToolContext):
@@ -292,21 +508,29 @@ class LinguaLive(Plugin):
 
         order = list(LEVELS)
         idx = order.index(data["level"]) if data["level"] in order else 1
-        suggest, why = "", ""
+        # ★이유는 **번역 키와 인자로** 돌려준다★ 여기는 `ctx`가 없는 자리(순수 계산)라
+        # 사용자 언어를 모른다. 완성된 문장을 만들어 두면 그 언어가 곧 굳어 버린다 —
+        # 화면이 `lingua_i18n.t(ctx.lang, why, **why_args)`로 그때 옮긴다.
+        suggest, why, why_args = "", "", {}
         if rate is not None and len(recent) >= 3:
             if rate >= PROBE_UP and idx < len(order) - 1:
-                suggest, why = order[idx + 1], f"한 단계 위 표현을 {rate:.0%} 소화했습니다"
+                suggest = order[idx + 1]
+                why, why_args = ("You handled {rate} of the next level up",
+                                 {"rate": f"{rate:.0%}"})
             elif rate <= PROBE_DOWN and idx > 0:
-                suggest, why = order[idx - 1], f"한 단계 위 표현 통과율이 {rate:.0%}입니다"
+                suggest = order[idx - 1]
+                why, why_args = ("You cleared {rate} of the next level up",
+                                 {"rate": f"{rate:.0%}"})
         if not suggest and review_rate is not None and review_rate <= 0.4 and idx > 0:
-            suggest, why = order[idx - 1], f"복습 정답률이 {review_rate:.0%}입니다"
+            suggest = order[idx - 1]
+            why, why_args = ("Review accuracy is {rate}", {"rate": f"{review_rate:.0%}"})
 
         plan = PRESCRIPTIONS.get(weakest) if weakest else None
         return {
             "probe_rate": rate, "probes": len(recent),
             "axes": axes, "weakest": weakest,
             "review_rate": review_rate, "cards": len(scope),
-            "suggest": suggest, "why": why,
+            "suggest": suggest, "why": why, "why_args": why_args,
             "prescription": plan, "level": data["level"],
         }
 
@@ -338,7 +562,7 @@ class LinguaLive(Plugin):
             elif value:
                 return (f"'{value}' is not a valid {field}. "
                         f"Choose one of: {', '.join(vocab)}")
-        ctx.write_log(f"[lingua] {', '.join(changed) or '변경 없음'}")
+        ctx.write_log(f"[lingua] {', '.join(changed) or _t(ctx.lang, 'no change')}")
         return f"Settings updated: {', '.join(changed) or '(none)'}. " + self._brief(data)
 
     def _do_status(self, ctx, data, args) -> str:
@@ -368,6 +592,13 @@ class LinguaLive(Plugin):
         mode = MODES[data["mode"]]
         due = self._due(data)[:MAX_FOCUS_ITEMS]
         report = self._analyze(data)
+        # ★시작할 때 자세를 집중으로 올린다★ 지금 이걸 하는 중이라는 뜻이고, 그동안은
+        # *"이어가자"* 고 또 권하지 않는다. 시간이 지나면 **저절로** 배경으로 돌아온다.
+        try:
+            from cosmos.core import collab as _collab
+            _collab.set_stance(self.name, "focus", getattr(ctx, "user_id", "") or "")
+        except Exception:
+            pass                          # 자세를 못 적어도 수업은 계속된다
 
         lines = [
             f"[LINGUA LIVE — session #{data['session']}]",
@@ -375,6 +606,9 @@ class LinguaLive(Plugin):
             f"Learner level: {data['level']} — {LEVELS[data['level']]}",
             f"Mode: {mode['label']} — {mode['desc']}",
         ]
+        # ★되읽는 문★ 브레인이 이미 아는 것을 세션 앞에 놓는다 — 없으면 빈 줄도 안 넣는다.
+        if (known := self._recall_progress(ctx)):
+            lines.append(f"What Cosmos already knows about this: {known}")
         if data["mode"] == "scene":
             lines.append(f"Scene: {SCENES[data['scene']]}. Play the other role. "
                          f"Stay in character; do not narrate.")
@@ -417,14 +651,20 @@ class LinguaLive(Plugin):
         else:
             lines += ["", "REVIEW QUEUE: empty — this is a fresh start, build from today."]
         if report["suggest"]:
-            lines.append(f"NOTE: measurements suggest level {report['suggest']} "
-                         f"({report['why']}) — ask the learner before changing it.")
+            lines.append(
+                f"NOTE: measurements suggest level {report['suggest']} "
+                f"({_t('en', report['why'], **(report.get('why_args') or {}))}) — "
+                f"ask the learner before changing it.")
         if report["weakest"] and report["prescription"]:
             lines.append(f"WEAKEST AXIS so far: {ERROR_KINDS[report['weakest']]} — "
                          f"{report['prescription']['say']}")
 
-        ctx.write_log(f"[lingua] 세션 #{data['session']} · {lang['label']} · "
-                      f"{mode['label']} · 교정 {policy['label']} · 복습 {len(due)}건")
+        ctx.write_log("[lingua] " + _t(
+            ctx.lang, "Session #{session} · {language} · {mode} · "
+                      "correction {policy} · {due} to review",
+            session=data["session"], language=_t(ctx.lang, lang["label"]),
+            mode=_t(ctx.lang, mode["label"]), policy=_t(ctx.lang, policy["label"]),
+            due=len(due)))
         return "\n".join(lines)
 
     def _do_note_error(self, ctx, data, args) -> str:
@@ -459,7 +699,9 @@ class LinguaLive(Plugin):
             data["today"].append(item["id"])
 
         # 피드에는 한 줄만 — 교정 본문은 화면(뷰)이 카드로 보여준다
-        ctx.write_log(f"[lingua] ✎ 교정 1건{' · 복습 큐 승격' if promoted else ''}")
+        ctx.write_log("[lingua] ✎ " + _t(ctx.lang, "1 correction")
+                      + (" · " + _t(ctx.lang, "promoted to the review queue")
+                         if promoted else ""))
         policy = data["policy"]
         if policy == "flow":
             guidance = ("Logged silently and shown on the learner's screen. "
@@ -519,8 +761,9 @@ class LinguaLive(Plugin):
             item["due"] = data["session"] + SRS_INTERVALS[0]
         item["last"] = _now()
         label = item.get("correct") or item.get("term")
-        ctx.write_log(f"[lingua] {'○' if ok else '✕'} 복습 {label} "
-                      f"(box {item['box']}/{len(SRS_INTERVALS)})")
+        ctx.write_log(f"[lingua] {'○' if ok else '✕'} " + _t(
+            ctx.lang, "review {label} (box {box}/{total})",
+            label=label, box=item["box"], total=len(SRS_INTERVALS)))
         if item.get("graduated"):
             return f"'{label}' graduated — the learner owns it now. Tell them so."
         return (f"Review recorded ({'correct' if ok else 'missed'}). "
@@ -538,8 +781,9 @@ class LinguaLive(Plugin):
         data["probes"] = data["probes"][-200:]
         recent = [p for p in data["probes"] if p["lang"] == data["language"]][-2:]
         streak = len(recent) == 2 and all(p["passed"] == passed for p in recent)
-        ctx.write_log(f"[lingua] {'✓' if passed else '·'} 난이도 {level} "
-                      f"{'소화' if passed else '미소화'}")
+        ctx.write_log(f"[lingua] {'✓' if passed else '·'} " + _t(
+            ctx.lang, "level {level} handled" if passed else "level {level} not handled",
+            level=level))
         if streak and passed:
             return (f"Two probes passed in a row — speak at {level} from now on: longer "
                     f"sentences, less scaffolding. Keep planting probes above that.")
@@ -586,30 +830,46 @@ class LinguaLive(Plugin):
             data["mode"] = plan["mode"]
             if plan["policy"]:
                 data["policy"] = plan["policy"]
-        ctx.write_log(f"[lingua] 세션 #{data['session']} 종료 — 카드 {len(cards)}장 · "
-                      f"복습 대기 {due_next}건"
-                      + (f" · 약점 {ERROR_KINDS[overall['weakest']]}" if overall["weakest"] else "")
-                      + (f" · 다음 모드 {MODES[data['mode']]['label']}" if plan else ""))
+        # ★세션이 끝날 때가 **기억할 것이 확정되는 자리**다★ 도중에 적으면 한 세션이
+        # 여러 번 남고, 안 적으면 다음 세션이 백지에서 시작한다(원칙 0 ②).
+        self._remember_progress(ctx, data)
+        # 수업이 끝났으므로 자세를 배경으로 되돌린다 — 시간이 풀어 주기를 기다리면
+        # 그 사이 *"이어가자"* 를 못 한다.
+        try:
+            from cosmos.core import collab as _collab
+            _collab.set_stance(self.name, "ambient", getattr(ctx, "user_id", "") or "")
+        except Exception:
+            pass
+        ctx.write_log("[lingua] " + _t(
+            ctx.lang, "Session #{session} closed — {cards} cards · {due} awaiting review",
+            session=data["session"], cards=len(cards), due=due_next)
+            + (_t(ctx.lang, " · weak: {axis}",
+                  axis=_t(ctx.lang, ERROR_KINDS[overall["weakest"]]))
+               if overall["weakest"] else "")
+            + (_t(ctx.lang, " · next mode {mode}",
+                  mode=_t(ctx.lang, MODES[data["mode"]]["label"])) if plan else ""))
 
         summary = [f"Session #{data['session']} closed. {len(cards)} card(s), "
                    f"{due_next} item(s) in the review queue.",
                    "", "Report this back to the learner in THEIR language, briefly:"]
         if report["probe_rate"] is not None:
-            summary.append(f"  · 이번 대화에서 한 단계 위 표현 소화율 "
-                           f"{report['probe_rate']:.0%} ({report['probes']}회 측정)")
+            summary.append(f"  · handled {report['probe_rate']:.0%} of next-level "
+                           f"forms this session ({report['probes']} probes)")
         if any(report["axes"].values()):
-            summary.append("  · 오류 분포: " + ", ".join(
-                f"{ERROR_KINDS[k]} {v}건" for k, v in report["axes"].items() if v))
+            summary.append("  · error mix: " + ", ".join(
+                f"{ERROR_KINDS[k]} {v}" for k, v in report["axes"].items() if v))
         for item in cards[:MAX_FOCUS_ITEMS]:
             summary.append(f"  · {item.get('correct') or item.get('term')}"
                            f" — {item.get('note') or item.get('meaning') or ''}")
         if plan:
-            summary.append(f"  · 보충할 것: {plan['say']} "
-                           f"(다음 세션 모드를 {MODES[data['mode']]['label']}으로 맞춰 두었습니다)")
+            summary.append(f"  · to shore up: {plan['say']} "
+                           f"(next session is set to {MODES[data['mode']]['label']})")
         if overall["suggest"]:
-            summary.append(f"  · 레벨 재분석: {data['level']} → {overall['suggest']} "
-                           f"({overall['why']}). 바꿀지 물어보고, 동의하면 "
-                           f"set(level={overall['suggest']})을 호출하세요.")
+            summary.append(
+                f"  · level re-read: {data['level']} → {overall['suggest']} "
+                f"({_t('en', overall['why'], **(overall.get('why_args') or {}))}). "
+                f"Ask the learner first; if they agree, call "
+                f"set(level={overall['suggest']}).")
         summary.append("Then tell them when the cards come back (spaced repetition).")
         return "\n".join(summary)
 
@@ -654,9 +914,11 @@ class LinguaLive(Plugin):
             if added:
                 # 피드에는 **한 줄만**. 교정 본문을 대화창에 쏟으면 읽히지도 않고
                 # 대화 기록을 덮어 버린다(실사용 스크린샷의 그 벽).
-                ctx.write_log(f"[lingua] ✎ 교정 {added}건 — 🧩 화면에서 확인하세요")
+                ctx.write_log("[lingua] ✎ " + _t(
+                    ctx.lang, "{count} corrections — see them on the 🧩 screen",
+                    count=added))
         except Exception as e:
-            print(f"[lingua] 백그라운드 분석 실패: {e}")
+            print(f"[lingua] background analysis failed: {e}")
         finally:
             LinguaLive._busy = False
             with _LOCK:
@@ -751,17 +1013,22 @@ class LinguaLive(Plugin):
         tab = str(data.get("view_tab") or params.get("tab") or "today")
         lang = LANGUAGES[data["language"]]
         code = data["language"]
+        ui = ctx.lang                     # ★사용자가 **읽는** 언어(배우는 언어가 아니다)★
         due = self._due(data)
-        tabs = (("today", "오늘"), ("review", f"복습 {len(due)}"),
-                ("report", "분석"), ("settings", "설정"))
+        tabs = (("today", _t(ui, "Today")),
+                ("review", _t(ui, "Review {count}", count=len(due))),
+                ("report", _t(ui, "Report")),
+                ("settings", _t(ui, "Settings")))
         blocks: list[dict] = [{
             "type": "chips", "items": [
-                {"label": "언어", "value": f"{lang['label']} {lang['native']}"},
-                {"label": "레벨", "value": data["level"]},
-                {"label": "모드", "value": MODES[data["mode"]]["label"]},
-                {"label": "교정", "value": POLICIES[data["policy"]]["label"],
+                {"label": _t(ui, "Language"),
+                 "value": f"{_t(ui, lang['label'])} {lang['native']}"},
+                {"label": _t(ui, "Level"), "value": data["level"]},
+                {"label": _t(ui, "Mode"), "value": _t(ui, MODES[data["mode"]]["label"])},
+                {"label": _t(ui, "Correction"),
+                 "value": _t(ui, POLICIES[data["policy"]]["label"]),
                  "tone": "warn" if data["policy"] == "focus" else "good"},
-                {"label": "세션", "value": f"#{data['session']}"},
+                {"label": _t(ui, "Session"), "value": f"#{data['session']}"},
             ]}, {
             "type": "actions", "items": [
                 {"label": label, "tool": self.name,
@@ -770,40 +1037,44 @@ class LinguaLive(Plugin):
                 for key, label in tabs]}]
 
         if tab == "review":
-            blocks += self._review_blocks(data, due, code)
+            blocks += self._review_blocks(data, due, code, ui)
         elif tab == "settings":
-            blocks += self._settings_blocks(data)
+            blocks += self._settings_blocks(data, ui)
         elif tab == "report":
-            blocks += self._report_blocks(data)
+            blocks += self._report_blocks(data, ui)
         else:
-            blocks += self._today_blocks(data, code)
+            blocks += self._today_blocks(data, code, ui)
 
         graduated = sum(1 for i in data["items"] if i.get("graduated"))
         total = len(data["items"])
         return {
             "title": "🗣 Lingua Live",
-            "subtitle": f"{lang['label']} · {data['level']} · "
-                        f"{MODES[data['mode']]['label']} · 카드 {total}장 · 졸업 {graduated}",
+            "subtitle": f"{_t(ui, lang['label'])} · {data['level']} · "
+                        f"{_t(ui, MODES[data['mode']]['label'])} · "
+                        + _t(ui, "{cards} cards · {graduated} graduated",
+                             cards=total, graduated=graduated),
             "params": {"tab": tab},
             "blocks": blocks,
         }
 
-    def _card(self, item: dict, code: str) -> dict:
+    def _card(self, item: dict, code: str, ui: str) -> dict:
         """단어 카드 — 뜻·읽기·예문."""
         return {"title": item.get("term", ""), "reading": item.get("reading", ""),
                 "subtitle": item.get("meaning", ""), "body": item.get("note", ""),
                 "lang": code, "tone": "info",
-                "tags": [f"복습 {item.get('box', 0)}/{len(SRS_INTERVALS)}"],
+                "tags": [_t(ui, "review {box}/{total}",
+                            box=item.get("box", 0), total=len(SRS_INTERVALS))],
                 "examples": [{"text": e, "translation": ""}
                              for e in item.get("examples") or []]}
 
-    def _correction(self, item: dict, code: str) -> dict:
+    def _correction(self, item: dict, code: str, ui: str) -> dict:
         """교정 카드 — **틀린 것과 고친 것을 나란히**. 문단으로 늘어놓으면 무엇이
         어떻게 바뀌었는지 읽히지 않는다(v0.1.0의 실패)."""
         tag = " · ".join(x for x in (
-            item.get("tag") or ERROR_KINDS.get(item.get("kind", ""), ""),
-            f"{item['seen']}번째" if item.get("seen", 1) > 1 else "",
-            f"복습 {item['box']}/{len(SRS_INTERVALS)}" if item.get("box") else "") if x)
+            item.get("tag") or _t(ui, ERROR_KINDS.get(item.get("kind", ""), "")),
+            _t(ui, "seen {count}×", count=item["seen"]) if item.get("seen", 1) > 1 else "",
+            _t(ui, "review {box}/{total}", box=item["box"], total=len(SRS_INTERVALS))
+            if item.get("box") else "") if x)
         return {"wrong": item.get("said", ""), "right": item.get("correct", ""),
                 "note": item.get("note", ""), "lang": code, "tag": tag,
                 "examples": [{"text": e, "translation": ""}
@@ -813,138 +1084,168 @@ class LinguaLive(Plugin):
         return ([i for i in items if i.get("type") != "word"],
                 [i for i in items if i.get("type") == "word"])
 
-    def _today_blocks(self, data: dict, code: str) -> list[dict]:
+    def _today_blocks(self, data: dict, code: str, ui: str) -> list[dict]:
         today = [i for i in data["items"] if i["id"] in data["today"]]
         errors, words = self._split(today)
         if not today:
             return [{"type": "text", "tone": "muted",
-                     "text": "대화를 시작하면 교정과 새 단어가 여기 쌓입니다. "
-                             "말하는 도중에는 끊지 않습니다 — 고칠 것은 이 화면에만 "
-                             "조용히 올라옵니다. 🔊로 발음을 다시 들을 수 있어요."},
+                     "text": _t(ui, "Start talking and your corrections and new words "
+                                    "pile up here. Nothing interrupts you while you "
+                                    "speak — anything to fix appears quietly on this "
+                                    "screen. Tap 🔊 to hear it again.")},
                     {"type": "actions", "items": [
-                        {"label": "회화 시작", "tool": self.name, "style": "primary",
+                        {"label": _t(ui, "Start talking"), "tool": self.name,
+                         "style": "primary",
                          "args": {"action": "start", "mode": "chat", "_tab": "today"}},
-                        {"label": "상황극", "tool": self.name,
+                        {"label": _t(ui, "Role-play"), "tool": self.name,
                          "args": {"action": "start", "mode": "scene", "_tab": "today"}},
-                        {"label": "복습", "tool": self.name,
+                        {"label": _t(ui, "Review"), "tool": self.name,
                          "args": {"action": "start", "mode": "review", "_tab": "today"}}]}]
+        waiting = len([i for i in data["items"]
+                       if i.get("box") and not i.get("graduated")])
         blocks: list[dict] = [{"type": "chips", "items": [
-            {"label": "오늘 교정", "value": f"{len(errors)}", "tone": "warn"},
-            {"label": "새 단어", "value": f"{len(words)}", "tone": "info"},
-            {"label": "복습 대기", "value": f"{len([i for i in data['items'] if i.get('box') and not i.get('graduated')])}"},
+            {"label": _t(ui, "Corrections today"), "value": f"{len(errors)}", "tone": "warn"},
+            {"label": _t(ui, "New words"), "value": f"{len(words)}", "tone": "info"},
+            {"label": _t(ui, "Waiting for review"), "value": f"{waiting}"},
         ]}]
         if errors:
             # 최신이 위로 — 방금 말한 것을 바로 확인하게 한다
             blocks.append({"type": "correction",
-                           "items": [self._correction(i, code) for i in reversed(errors)]})
+                           "items": [self._correction(i, code, ui)
+                                     for i in reversed(errors)]})
         if words:
-            blocks.append({"type": "text", "tone": "muted", "text": "오늘 만난 표현"})
+            blocks.append({"type": "text", "tone": "muted",
+                           "text": _t(ui, "Words you met today")})
             blocks.append({"type": "cards",
-                           "items": [self._card(i, code) for i in reversed(words)]})
+                           "items": [self._card(i, code, ui) for i in reversed(words)]})
         blocks.append({"type": "actions", "items": [
-            {"label": "이걸로 복습하기", "tool": self.name, "style": "primary",
+            {"label": _t(ui, "Review these"), "tool": self.name, "style": "primary",
              "args": {"action": "start", "mode": "review", "_tab": "today"}},
-            {"label": "오늘 마무리", "tool": self.name,
+            {"label": _t(ui, "Wrap up today"), "tool": self.name,
              "args": {"action": "finish", "_tab": "report"}}]})
         return blocks
 
-    def _review_blocks(self, data: dict, due: list[dict], code: str) -> list[dict]:
+    def _review_blocks(self, data: dict, due: list[dict], code: str,
+                       ui: str) -> list[dict]:
         queued = [i for i in data["items"]
                   if i["lang"] == code and i.get("box") and not i.get("graduated")]
         blocks: list[dict] = [{
-            "type": "progress", "label": "복습 큐",
+            "type": "progress", "label": _t(ui, "Review queue"),
             "value": (len(queued) - len(due)) / len(queued) if queued else 0.0,
-            "caption": f"지금 볼 것 {len(due)}개 · 대기 {len(queued)}개 · "
-                       f"간격 {'→'.join(str(s) for s in SRS_INTERVALS)} 세션"}]
+            "caption": _t(ui, "{due} to see now · {queued} waiting · "
+                              "intervals {intervals} sessions",
+                          due=len(due), queued=len(queued),
+                          intervals="→".join(str(s) for s in SRS_INTERVALS))}]
         if due:
             errors, words = self._split(due[:10])
             if errors:
                 blocks.append({"type": "correction",
-                               "items": [self._correction(i, code) for i in errors]})
+                               "items": [self._correction(i, code, ui) for i in errors]})
             if words:
                 blocks.append({"type": "cards",
-                               "items": [self._card(i, code) for i in words]})
+                               "items": [self._card(i, code, ui) for i in words]})
             blocks.append({"type": "actions", "items": [
-                {"label": "복습 시작", "tool": self.name, "style": "primary",
+                {"label": _t(ui, "Start review"), "tool": self.name, "style": "primary",
                  "args": {"action": "start", "mode": "review", "_tab": "today"}}]})
         else:
             blocks.append({"type": "text", "tone": "good",
-                           "text": "지금 복습할 항목이 없습니다. 잊을 때쯤 다시 꺼내 드릴게요."})
+                           "text": _t(ui, "Nothing to review right now. It will come "
+                                          "back just before you forget.")})
         if queued:
             blocks.append({"type": "list", "items": [
                 {"text": i.get("correct") or i.get("term", ""),
-                 "sub": f"box {i.get('box')}/{len(SRS_INTERVALS)} · "
-                        f"{max(0, i.get('due', 0) - data['session'])} 세션 뒤",
+                 "sub": _t(ui, "box {box}/{total} · in {sessions} sessions",
+                           box=i.get("box"), total=len(SRS_INTERVALS),
+                           sessions=max(0, i.get("due", 0) - data["session"])),
                  "lang": code, "tone": "muted"} for i in queued[:20]]})
         return blocks
 
-    def _report_blocks(self, data: dict) -> list[dict]:
+    def _report_blocks(self, data: dict, ui: str) -> list[dict]:
         """분석 탭 — 무엇이 약하고 다음에 무엇을 할지. 숫자가 아니라 **처방**이 결론이다."""
         report = self._analyze(data)
         blocks: list[dict] = []
         if report["probe_rate"] is not None:
-            blocks.append({"type": "progress", "label": "한 단계 위 표현 소화율",
+            blocks.append({"type": "progress",
+                           "label": _t(ui, "How much of the next level you handled"),
                            "value": report["probe_rate"],
-                           "caption": f"대화 중 {report['probes']}회 측정 — "
-                                      f"시험이 아니라 대화 안에 심어 잰 값입니다"})
+                           "caption": _t(ui, "Measured {probes}× mid-conversation — "
+                                             "planted in the talk, not a test",
+                                         probes=report["probes"])})
         if report["review_rate"] is not None:
-            blocks.append({"type": "progress", "label": "지난 교정 재현율",
+            blocks.append({"type": "progress",
+                           "label": _t(ui, "Past corrections you got right again"),
                            "value": report["review_rate"],
-                           "caption": "복습에서 실제로 다시 해낸 비율"})
+                           "caption": _t(ui, "How often you actually did it right "
+                                             "in review")})
         total = sum(report["axes"].values())
         if total:
             blocks.append({"type": "list", "items": [
-                {"text": f"{ERROR_KINDS[k]}  {'█' * min(20, v)} {v}건",
+                {"text": f"{_t(ui, ERROR_KINDS[k])}  {'█' * min(20, v)} "
+                         + _t(ui, "{count} times", count=v),
                  "tone": "warn" if k == report["weakest"] else "muted"}
                 for k, v in report["axes"].items() if v]})
         if report["prescription"]:
             blocks.append({"type": "text", "tone": "info",
-                           "text": "보충할 것 — " + report["prescription"]["say"]})
+                           "text": _t(ui, "What to shore up — ")
+                                   + _t(ui, report["prescription"]["say"])})
             blocks.append({"type": "actions", "items": [
-                {"label": f"{MODES[report['prescription']['mode']]['label']}으로 시작",
+                {"label": _t(ui, "Start {mode}",
+                             mode=_t(ui, MODES[report["prescription"]["mode"]]["label"])),
                  "tool": self.name, "style": "primary",
                  "args": {"action": "start", "mode": report["prescription"]["mode"],
                           "_tab": "today"}}]})
         if report["suggest"]:
             blocks.append({"type": "text", "tone": "good",
-                           "text": f"레벨 재분석: {report['level']} → {report['suggest']} "
-                                   f"({report['why']})"})
+                           "text": _t(ui, "Level re-read: {level} → {suggest} ({why})",
+                                      level=report["level"], suggest=report["suggest"],
+                                      why=_t(ui, report["why"],
+                                             **(report.get("why_args") or {})))})
+            up = report["suggest"] > report["level"]
             blocks.append({"type": "actions", "items": [
-                {"label": f"{report['suggest']}로 올리기" if report["suggest"] > report["level"]
-                 else f"{report['suggest']}로 내리기",
+                {"label": _t(ui, "Move up to {level}" if up else "Move down to {level}",
+                             level=report["suggest"]),
                  "tool": self.name, "style": "primary",
                  "args": {"action": "set", "level": report["suggest"], "_tab": "report"}}]})
         if not blocks:
             blocks.append({"type": "text", "tone": "muted",
-                           "text": "아직 분석할 대화가 없습니다. 몇 번 대화하면 "
-                                   "약점 축과 레벨 추정이 여기 나타납니다."})
+                           "text": _t(ui, "No conversations to analyse yet. After a few "
+                                          "talks your weak axis and level estimate "
+                                          "appear here.")})
         history = [h for h in data["history"]][-8:]
         if history:
             blocks.append({"type": "list", "items": [
-                {"text": f"세션 #{h['session']} · {h.get('level','')} · 카드 {h.get('cards',0)}장"
-                         + (f" · 약점 {ERROR_KINDS.get(h.get('weakest'),'')}"
+                {"text": _t(ui, "Session #{session} · {level} · {cards} cards",
+                            session=h["session"], level=h.get("level", ""),
+                            cards=h.get("cards", 0))
+                         + (_t(ui, " · weak: {axis}",
+                               axis=_t(ui, ERROR_KINDS.get(h.get("weakest"), "")))
                             if h.get("weakest") else ""),
                  "sub": h.get("at", ""), "tone": "muted"} for h in reversed(history)]})
         return blocks
 
-    def _settings_blocks(self, data: dict) -> list[dict]:
+    def _settings_blocks(self, data: dict, ui: str) -> list[dict]:
         return [
-            {"type": "text", "text": "설정은 넷뿐입니다 — 나머지는 학습 철학이 정합니다. "
-                                     "(README의 방법론 참고)"},
+            {"type": "text",
+             "text": _t(ui, "Four settings, and that is all — the rest is decided by "
+                            "the teaching method. (See the README.)")},
             {"type": "text", "tone": "muted",
-             "text": f"교정 방식: {POLICIES[data['policy']]['desc']}"},
+             "text": _t(ui, "Correction style: ")
+                     + _t(ui, POLICIES[data["policy"]]["desc"])},
             {"type": "actions", "items": [
-                {"label": f"교정 {p['label']}", "tool": self.name,
+                {"label": _t(ui, "Correction {style}", style=_t(ui, p["label"])),
+                 "tool": self.name,
                  "style": "primary" if key == data["policy"] else "ghost",
                  "args": {"action": "set", "policy": key, "_tab": "settings"}}
                 for key, p in POLICIES.items()]},
             {"type": "actions", "items": [
-                {"label": m["label"], "tool": self.name,
+                {"label": _t(ui, m["label"]), "tool": self.name,
                  "style": "primary" if key == data["mode"] else "ghost",
                  "args": {"action": "set", "mode": key, "_tab": "settings"}}
                 for key, m in MODES.items()]},
+            # 배우는 언어를 고르는 자리 — **이름은 사용자 언어로, 그러나 고르는 것은
+            # 그 언어 자체**다. 그래서 `native`를 함께 보여 준다("Spanish / Español").
             {"type": "actions", "items": [
-                {"label": spec["label"], "tool": self.name,
+                {"label": _t(ui, spec["label"]), "tool": self.name,
                  "style": "primary" if key == data["language"] else "ghost",
                  "args": {"action": "set", "language": key, "_tab": "settings"}}
                 for key, spec in list(LANGUAGES.items())[:8]]},
@@ -953,6 +1254,6 @@ class LinguaLive(Plugin):
                  "style": "primary" if lv == data["level"] else "ghost",
                  "args": {"action": "set", "level": lv, "_tab": "settings"}}
                 for lv in LEVELS]},
-            {"type": "list", "items": [{"text": f"{lv} — {desc}", "tone": "muted"}
+            {"type": "list", "items": [{"text": f"{lv} — {_t(ui, desc)}", "tone": "muted"}
                                        for lv, desc in LEVELS.items()]},
         ]
