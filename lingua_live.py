@@ -239,6 +239,60 @@ def offer_reason(*, due_cards: int, days_idle: float,
     return None
 
 
+def split_example(raw) -> dict:
+    """예문 하나를 ★원문과 번역★으로 가른다 (v0.5.1).
+
+    ⚠️ ★계약에 칸이 있는데 아무도 안 채우고 있었다★ — 화면 계약은 예문을
+    `{text, translation}`으로 받는데 여기서 `translation: ""`을 **고정으로** 넣었고,
+    도구 스키마도 예문을 **문자열 배열**로만 받아 모델이 번역을 줄 자리가 없었다.
+    그래서 B1 학습자가 `La semana pasada fuimos a Sevilla.` 만 받는다 — 예문의 절반이다.
+    (이 저장소가 "표에 있는데 아무도 안 채우면 있는 줄 알고 배선한다"고 부르는 그것이다.)
+
+    ★옛 모양도 그대로 받는다★ 이미 쌓인 카드가 문자열이고, 갑자기 안 보이면 그것은
+    개선이 아니라 고장이다.
+
+      "Ayer comí paella."                     → 번역 없음(그대로 보인다)
+      "Ayer comí paella. | 어제 파에야를 먹었다"  → 나란히 보인다
+      {"text": …, "translation": …}            → 그대로
+    """
+    if isinstance(raw, dict):
+        return {"text": str(raw.get("text") or "").strip(),
+                "translation": str(raw.get("translation") or "").strip()}
+    text = str(raw or "").strip()
+    if "|" in text:
+        left, _, right = text.partition("|")
+        return {"text": left.strip(), "translation": right.strip()}
+    return {"text": text, "translation": ""}
+
+
+# ── ★무엇을 먼저 보여 주는가 — 학습의 우선순위★ (v0.5.1) ────────────────────
+#
+# 지금은 **최신순**(`reversed`)이다. 그것은 *"방금 뭐라 했지"* 에는 맞지만 학습에는
+# 맞지 않는다 — 학습자가 화면을 여는 이유는 ★**무엇이 아직 안 붙었나**★를 보려는 것이다.
+#
+# 두 가지가 그것을 말한다:
+#   · 여러 번 틀렸다(`seen`·`misses`)  — 아직 안 붙은 것
+#   · 곧 잊는다(`box`가 낮다)          — 지금 만나야 하는 것
+#
+# ★순수 함수라야 그물이 잡는다★ — 정렬을 뷰 안에 묻어 두면 낱말만 남기는 뮤테이션이
+# 그대로 빠져나간다(29차 교훈).
+def learning_weight(item: dict) -> float:
+    """클수록 먼저 보여 준다. 0~1."""
+    misses = max(0, int(item.get("misses") or 0))
+    seen = max(1, int(item.get("seen") or 1))
+    box = max(1, int(item.get("box") or 1))
+    stuck = min(1.0, (misses + (seen - 1) * 0.5) / 4.0)   # 자꾸 걸린다
+    fresh = 1.0 - (box - 1) / max(1, len(SRS_INTERVALS) - 1)   # 아직 안 굳었다
+    return round(min(1.0, 0.6 * stuck + 0.4 * fresh), 4)
+
+
+def by_learning_need(items: list[dict]) -> list[dict]:
+    """★안 붙은 것이 위로★ — 같으면 최신이 위(정렬이 매번 같아야 그물이 잡는다)."""
+    rows = list(items or [])
+    return sorted(rows, key=lambda i: (-learning_weight(i),
+                                       -rows.index(i)))
+
+
 def days_between(then: str, now_ts: float, *, parse=None) -> float:
     """마지막 학습으로부터 며칠. 읽을 수 없는 값은 **0일로 본다**.
 
@@ -257,7 +311,7 @@ def days_between(then: str, now_ts: float, *, parse=None) -> float:
 
 class LinguaLive(Plugin):
     name = "lingua"
-    version = "0.5.0"
+    version = "0.5.1"
     description = (
         "Real-time language tutor. Call action=start ONCE at the beginning of a language-"
         "practice conversation to load the learner's profile and the teaching rules you "
@@ -285,7 +339,14 @@ class LinguaLive(Plugin):
             "term": {"type": "STRING", "description": "Word or phrase to remember"},
             "reading": {"type": "STRING", "description": "Pronunciation/reading (kana, pinyin, IPA…)"},
             "meaning": {"type": "STRING", "description": "Meaning in the learner's own language"},
-            "examples": {"type": "ARRAY", "description": "Example sentences using it",
+            # ★번역을 함께 받는다★ 원문만 주면 B1 학습자에게 절반만 주는 것이다.
+            # 옛 모양(원문만)도 그대로 받는다 — 이미 쌓인 카드가 그 모양이다.
+            "examples": {"type": "ARRAY",
+                         "description": "Example sentences using it. Put the "
+                                        "learner's-language translation after a '|' "
+                                        "-- 'Ayer comi paella. | I ate paella "
+                                        "yesterday.' Without it the learner only gets "
+                                        "half the example.",
                          "items": {"type": "STRING"}},
             "item_id": {"type": "STRING", "description": "Review item id (review_answer)"},
             "correct_answer": {"type": "BOOLEAN", "description": "Did the learner get it right?"},
@@ -1064,8 +1125,9 @@ class LinguaLive(Plugin):
                 "lang": code, "tone": "info",
                 "tags": [_t(ui, "review {box}/{total}",
                             box=item.get("box", 0), total=len(SRS_INTERVALS))],
-                "examples": [{"text": e, "translation": ""}
-                             for e in item.get("examples") or []]}
+                # ★번역을 채운다★ 예전에는 여기서 빈 문자열을 고정으로 넣어
+                # 계약의 칸이 영영 비어 있었다(위 `split_example` 참고).
+                "examples": [split_example(e) for e in item.get("examples") or []]}
 
     def _correction(self, item: dict, code: str, ui: str) -> dict:
         """교정 카드 — **틀린 것과 고친 것을 나란히**. 문단으로 늘어놓으면 무엇이
@@ -1077,8 +1139,9 @@ class LinguaLive(Plugin):
             if item.get("box") else "") if x)
         return {"wrong": item.get("said", ""), "right": item.get("correct", ""),
                 "note": item.get("note", ""), "lang": code, "tag": tag,
-                "examples": [{"text": e, "translation": ""}
-                             for e in item.get("examples") or []]}
+                # ★번역을 채운다★ 예전에는 여기서 빈 문자열을 고정으로 넣어
+                # 계약의 칸이 영영 비어 있었다(위 `split_example` 참고).
+                "examples": [split_example(e) for e in item.get("examples") or []]}
 
     def _split(self, items: list[dict]) -> tuple[list[dict], list[dict]]:
         return ([i for i in items if i.get("type") != "word"],
@@ -1110,9 +1173,10 @@ class LinguaLive(Plugin):
         ]}]
         if errors:
             # 최신이 위로 — 방금 말한 것을 바로 확인하게 한다
+            # ★안 붙은 것이 위로★(최신순이 아니다 — 위 `by_learning_need` 참고)
             blocks.append({"type": "correction",
                            "items": [self._correction(i, code, ui)
-                                     for i in reversed(errors)]})
+                                     for i in by_learning_need(errors)]})
         if words:
             blocks.append({"type": "text", "tone": "muted",
                            "text": _t(ui, "Words you met today")})
@@ -1140,7 +1204,8 @@ class LinguaLive(Plugin):
             errors, words = self._split(due[:10])
             if errors:
                 blocks.append({"type": "correction",
-                               "items": [self._correction(i, code, ui) for i in errors]})
+                               "items": [self._correction(i, code, ui)
+                                         for i in by_learning_need(errors)]})
             if words:
                 blocks.append({"type": "cards",
                                "items": [self._card(i, code, ui) for i in words]})
