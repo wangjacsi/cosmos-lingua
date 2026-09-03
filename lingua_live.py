@@ -311,7 +311,7 @@ def days_between(then: str, now_ts: float, *, parse=None) -> float:
 
 class LinguaLive(Plugin):
     name = "lingua"
-    version = "0.5.1"
+    version = "0.5.2"
     description = (
         "Real-time language tutor. Call action=start ONCE at the beginning of a language-"
         "practice conversation to load the learner's profile and the teaching rules you "
@@ -364,6 +364,27 @@ class LinguaLive(Plugin):
     capabilities = ["memory"]
     requires_desktop = False
     view_title = "🗣 Lingua Live"
+
+    # ★설정은 이 화면의 Settings 탭에 있다★ (v0.5.2 · 코스모스 계약 2026-09-03)
+    #
+    # 이 선언이 없던 동안 코스모스의 에이전트 목록은 이 줄에 ★"Nothing to set up —
+    # it just works"★ 를 붙였다 — 교정 방식·모드·언어·레벨 네 칸이 버젓이 있는데.
+    # 판정이 플러그인 수준 `settings` 선언만 봤기 때문이다. 네 칸을 그쪽으로 옮기지
+    # 않는 이유: 값이 학습 진행 데이터와 **한집**에 살아야 하고(레벨은 사용자가
+    # 고르지만 대화가 그 위로 재기도 한다), 이 탭은 현재 선택 강조·모국어 병기·
+    # 레벨 설명까지 얹어 일반 폼보다 낫다. 그래서 *"내 화면을 이 params로 열면
+    # 설정이 나온다"* 만 선언한다.
+    settings_at = {"_tab": "settings"}
+
+    # ★말로 이렇게 시킨다★ — 설치 목록의 카드가 이 줄들을 사용자 언어로 보여 준다.
+    # 이 줄들이 없던 동안 카드는 무엇을 하는지(description)는 말해도 **어떻게
+    # 시키는지**는 말하지 않았다 — Sean 지적(2026-08-12) *"모든 에이전트가 어떻게
+    # 사용되는 건지 … 하나도 안 나와 있어"* 의 마켓판이다.
+    howto = (
+        "Let's practice Spanish",
+        "Stop correcting me",
+        "How is my Japanese coming along?",
+    )
 
     # ── ★협업 — 코스모스와 함께 돕는다★ (계약: `cosmos/contracts/collab.py`) ────
     #
