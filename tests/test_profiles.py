@@ -7,6 +7,16 @@ from cosmos.contracts import ToolContext
 from lingua_live import LinguaLive, learning_state, CHANNEL
 
 
+def test_older_core_gets_upgrade_message_without_reading_or_writing_learning_files():
+    class OldContext:
+        user_id = "local"
+        def data_dir(self, *args):
+            pytest.fail("Old core must not migrate or modify learning data")
+    agent, ctx = LinguaLive(), OldContext()
+    assert "0.3.0" in agent.run(ctx, action="start")
+    assert "0.3.0" in agent.view(ctx)["blocks"][0]["text"]
+
+
 def test_dynamic_view_uses_real_data_and_keeps_html_stable():
     agent, ctx = LinguaLive(), Context()
     before = agent.view(ctx)['blocks'][-1]

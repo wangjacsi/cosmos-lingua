@@ -383,7 +383,7 @@ def days_between(then: str, now_ts: float, *, parse=None) -> float:
 
 class LinguaLive(Plugin):
     name = "lingua"
-    version = "0.5.2"
+    version = "0.6.0"
     description = (
         "Real-time language tutor. Call action=start ONCE at the beginning of a language-"
         "practice conversation to load the learner's profile and the teaching rules you "
@@ -720,6 +720,8 @@ class LinguaLive(Plugin):
 
     # ── 실행 ─────────────────────────────────────────────────────────────────
     def run(self, ctx: ToolContext, **args) -> str:
+        if not callable(getattr(ctx, "load_agent_state", None)):
+            return "Update Cosmos to 0.3.0 or later to use per-user Lingua profiles. Your existing learning data has not been changed."
         with _LOCK:
             return self._run_locked(ctx, **args)
 
@@ -1254,6 +1256,9 @@ class LinguaLive(Plugin):
 
         탭은 셋뿐이다: 오늘 / 복습 / 설정. 설정을 늘리는 대신 철학이 정하게 한다.
         """
+        if not callable(getattr(ctx, "load_agent_state", None)):
+            return {"title": self.view_title, "blocks": [{"type": "text", "tone": "warn",
+                    "text": "Update Cosmos to 0.3.0 or later to use this Lingua view. Your existing learning data has not been changed."}]}
         data = self._load(ctx)
         # 탭은 **상태**다(params가 아니라). 액션이 상태를 바꾸고 뷰가 그것을 읽는 한 방향
         # 흐름이라야, 셸이 무엇을 되돌려 주든 화면과 상태가 어긋나지 않는다.
