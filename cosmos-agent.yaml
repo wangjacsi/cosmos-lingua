@@ -12,7 +12,7 @@ contract: plugin/v1
 title: Lingua Live — live language practice
 # ★설치 화면은 코드를 받기 **전에** 그려진다★ — 그래서 협업하는 방식(무엇을 기억하고
 # 언제 먼저 말을 거는지)이 여기 없으면, 사용자는 설치한 뒤에야 그것을 알게 된다.
-description: A live language tutor that corrects you in the background without interrupting the conversation. It gauges your level while you speak, shows wrong↔right as cards on screen, and brings things back just before you forget. It keeps three things in Cosmos' memory — which language you are learning, roughly how far along, and what keeps tripping you up — so a new session does not start from scratch, and when things are quiet it can offer to pick practice back up. Say "stop correcting me" and it keeps to itself until you ask again. English, Spanish, Japanese, Chinese, German, French, Korean and Arabic.
+description: "A language-learning companion for natural conversation through enjoyable practice and varied examples. Each user keeps separate goals, interests, levels and review history for each language. Choose your explanation language independently. Lingua keeps lasting goals, progress and recurring difficulties in Cosmos memory, so future practice and timely review suggestions build on what you have learned. Corrections appear without interrupting conversation. Set your preferences from the installed agent list. Supports English, Spanish, Japanese, Chinese, German, French, Korean, Arabic, Italian, Portuguese and Russian."
 title_i18n:
   ko: Lingua Live — 실시간 언어 학습
   ja: Lingua Live — リアルタイム言語学習
@@ -20,11 +20,11 @@ title_i18n:
   fr: Lingua Live — pratique linguistique en direct
   de: Lingua Live — Sprachpraxis in Echtzeit
 description_i18n:
-  ko: 대화를 끊지 않고 백그라운드에서 교정하는 실시간 언어 튜터. 말하는 동안 수준을 재고, 틀린 말↔고친 말을 화면 카드로 보여주고, 잊을 때쯤 다시 꺼내 준다. 영어·스페인어·일본어·중국어·독일어·프랑스어·한국어·아랍어.
-  ja: 会話を止めずに背後で訂正するリアルタイム言語チューター。話している間にレベルを測り、誤り↔正しい形を画面カードで見せ、忘れる頃にもう一度出します。英語・スペイン語・日本語・中国語・ドイツ語・フランス語・韓国語・アラビア語。
-  es: Un tutor de idiomas en vivo que te corrige en segundo plano sin interrumpir la conversación. Mide tu nivel mientras hablas, muestra el error↔la forma correcta como tarjetas en pantalla y te lo devuelve justo antes de que lo olvides. Inglés, español, japonés, chino, alemán, francés, coreano y árabe.
-  fr: Un tuteur de langue en direct qui vous corrige en arrière-plan sans interrompre la conversation. Il évalue votre niveau pendant que vous parlez, affiche l'erreur↔la forme correcte sous forme de cartes, et vous les repropose juste avant que vous ne les oubliiez. Anglais, espagnol, japonais, chinois, allemand, français, coréen et arabe.
-  de: Ein Live-Sprachtutor, der dich im Hintergrund korrigiert, ohne das Gespräch zu unterbrechen. Er misst dein Niveau, während du sprichst, zeigt Fehler↔richtige Form als Karten auf dem Bildschirm und holt sie zurück, kurz bevor du sie vergisst. Englisch, Spanisch, Japanisch, Chinesisch, Deutsch, Französisch, Koreanisch und Arabisch.
+  ko: "재미있는 연습과 다양한 예시로 자연스러운 대화를 익히는 언어 학습 동반자. 사용자마다, 언어마다 목적·관심사·수준·복습 기록을 따로 관리하고 설명 언어도 선택합니다. 오래 유효한 목표·진도·반복 약점은 Cosmos 기억에 남겨 다음 연습과 적절한 복습 제안에 활용합니다. 교정은 대화를 끊지 않고 화면에 표시하며, 설치 에이전트 목록에서 학습 설정을 바꿀 수 있습니다. 영어·스페인어·일본어 등 11개 언어를 지원합니다."
+  ja: "楽しい練習と多様な例で自然な会話を身につける学習パートナー。ユーザーごと・言語ごとに目標、関心、レベル、復習記録を分け、説明の言語も選べます。長く役立つ目標、進度、繰り返す苦手分野をCosmosの記憶に残し、次の練習と適切な復習提案に活用します。会話を遮らず画面に訂正を表示。インストール済みエージェント一覧から設定できます。英語、スペイン語、日本語など11言語に対応。"
+  es: "Un compañero para aprender a conversar con naturalidad mediante práctica amena y ejemplos variados. Cada usuario conserva objetivos, intereses, nivel e historial de repaso por idioma y elige el idioma de las explicaciones. Los objetivos, avances y dificultades recurrentes quedan en la memoria de Cosmos para orientar la siguiente práctica y sugerir repasos oportunos. Las correcciones aparecen sin interrumpir la conversación. Ajusta tus preferencias desde la lista de agentes instalados. Admite 11 idiomas."
+  fr: "Un compagnon pour converser naturellement grâce à une pratique agréable et à des exemples variés. Chaque utilisateur conserve ses objectifs, centres d’intérêt, niveaux et révisions par langue et choisit la langue des explications. Les objectifs durables, progrès et difficultés récurrentes sont mémorisés par Cosmos pour guider les prochaines séances et proposer des révisions au bon moment. Les corrections s’affichent sans interrompre la conversation. Réglages accessibles depuis la liste des agents installés. Onze langues disponibles."
+  de: "Ein Lernbegleiter für natürliche Gespräche durch unterhaltsame Übungen und vielfältige Beispiele. Ziele, Interessen, Niveau und Wiederholungsverlauf bleiben je Nutzer und Sprache getrennt; die Erklärungssprache ist frei wählbar. Cosmos merkt sich dauerhafte Ziele, Fortschritte und wiederkehrende Schwierigkeiten für die nächste Übung und passende Wiederholungsvorschläge. Korrekturen erscheinen, ohne das Gespräch zu unterbrechen. Einstellungen sind über die Liste installierter Agenten erreichbar. Elf Sprachen werden unterstützt."
 author: wangjacsi
 license: MIT
 homepage: https://github.com/wangjacsi/cosmos-lingua
@@ -37,5 +37,9 @@ tools:
 # 것이 갈린다. 코드의 `capabilities`와 반드시 같아야 한다.
 capabilities:
   - memory
+brain:
+  stores: [goal, topic, preference]
+  reads: [goal, topic, preference]
+  settled: "Individual cards and review schedules stay in user- and language-scoped agent state. Lasting learning goals, progress and recurring difficulties are stored in Cosmos memory and recalled for future practice."
 requires_desktop: false
 requires: []

@@ -738,6 +738,117 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
 }
 
 
+# 개인별 학습 설정. 영어 원문은 그대로 두고 화면 언어로만 옮긴다.
+TRANSLATIONS.setdefault("ko", {}).update({
+    "Your learning preferences": "나의 학습 설정",
+    "Learning goal": "학습 목적",
+    "Topics you enjoy": "좋아하는 주제",
+    "Practice experience": "학습 체험 방식",
+    "Explanation language": "설명 언어",
+    "Use interface language": "화면 언어 사용",
+    "Save learning preferences": "학습 설정 저장",
+    "Varied examples and role-play": "다양한 예시와 상황극",
+    "Conversation first": "대화 중심",
+    "Learning goal: {goal}": "학습 목적: {goal}",
+    "Choose your own goal in Settings": "설정에서 나의 학습 목적을 정해 주세요",
+    "Your language plan: {languages}": "나의 언어 학습 계획: {languages}",
+    "Each language keeps its own level, practice and review history. Tell Cosmos which language you want to learn next.": "언어마다 수준·연습·복습 기록이 따로 유지됩니다. 다음에 배우고 싶은 언어는 Cosmos에게 말해 주세요.",
+})
+
+TRANSLATIONS.setdefault("ja", {}).update({
+    "Your learning preferences": "学習の設定",
+    "Learning goal": "学習の目的",
+    "Topics you enjoy": "好きな話題",
+    "Practice experience": "練習のスタイル",
+    "Explanation language": "説明の言語",
+    "Use interface language": "画面の言語を使う",
+    "Save learning preferences": "学習設定を保存",
+    "Varied examples and role-play": "多様な例とロールプレイ",
+    "Conversation first": "会話を中心に",
+    "Learning goal: {goal}": "学習の目的: {goal}",
+    "Choose your own goal in Settings": "設定で自分の学習目的を選んでください",
+    "Your language plan: {languages}": "言語の学習計画: {languages}",
+    "Each language keeps its own level, practice and review history. Tell Cosmos which language you want to learn next.": "言語ごとにレベル・練習・復習の記録が保存されます。次に学びたい言語をCosmosに伝えてください。",
+})
+
+TRANSLATIONS.setdefault("es", {}).update({
+    "Your learning preferences": "Tus preferencias de aprendizaje",
+    "Learning goal": "Objetivo de aprendizaje",
+    "Topics you enjoy": "Temas que disfrutas",
+    "Practice experience": "Experiencia de práctica",
+    "Explanation language": "Idioma de las explicaciones",
+    "Use interface language": "Usar el idioma de la interfaz",
+    "Save learning preferences": "Guardar preferencias",
+    "Varied examples and role-play": "Ejemplos variados y juegos de rol",
+    "Conversation first": "Conversación ante todo",
+    "Learning goal: {goal}": "Objetivo: {goal}",
+    "Choose your own goal in Settings": "Elige tu objetivo en Ajustes",
+    "Your language plan: {languages}": "Tu plan de idiomas: {languages}",
+    "Each language keeps its own level, practice and review history. Tell Cosmos which language you want to learn next.": "Cada idioma conserva su nivel y su historial de práctica y repaso. Dile a Cosmos qué idioma quieres aprender después.",
+})
+
+TRANSLATIONS.setdefault("fr", {}).update({
+    "Your learning preferences": "Vos préférences d’apprentissage",
+    "Learning goal": "Objectif d’apprentissage",
+    "Topics you enjoy": "Sujets qui vous plaisent",
+    "Practice experience": "Style de pratique",
+    "Explanation language": "Langue des explications",
+    "Use interface language": "Utiliser la langue de l’interface",
+    "Save learning preferences": "Enregistrer les préférences",
+    "Varied examples and role-play": "Exemples variés et jeux de rôle",
+    "Conversation first": "La conversation avant tout",
+    "Learning goal: {goal}": "Objectif : {goal}",
+    "Choose your own goal in Settings": "Choisissez votre objectif dans les paramètres",
+    "Your language plan: {languages}": "Votre parcours linguistique : {languages}",
+    "Each language keeps its own level, practice and review history. Tell Cosmos which language you want to learn next.": "Chaque langue conserve son niveau et son historique de pratique et de révision. Dites à Cosmos quelle langue apprendre ensuite.",
+})
+
+TRANSLATIONS.setdefault("de", {}).update({
+    "Your learning preferences": "Deine Lernpräferenzen",
+    "Learning goal": "Lernziel",
+    "Topics you enjoy": "Themen, die dir gefallen",
+    "Practice experience": "Übungsstil",
+    "Explanation language": "Erklärungssprache",
+    "Use interface language": "Sprache der Oberfläche verwenden",
+    "Save learning preferences": "Lernpräferenzen speichern",
+    "Varied examples and role-play": "Vielfältige Beispiele und Rollenspiele",
+    "Conversation first": "Gespräche im Mittelpunkt",
+    "Learning goal: {goal}": "Lernziel: {goal}",
+    "Choose your own goal in Settings": "Wähle dein eigenes Ziel in den Einstellungen",
+    "Your language plan: {languages}": "Dein Sprachenplan: {languages}",
+    "Each language keeps its own level, practice and review history. Tell Cosmos which language you want to learn next.": "Jede Sprache behält ihr Niveau sowie ihren Übungs- und Wiederholungsverlauf. Sag Cosmos, welche Sprache du als Nächstes lernen möchtest.",
+})
+
+
+TRANSLATIONS['ko'].update({
+    'YOUR CONVERSATION SPACE': '나의 대화 연습 공간',
+    'A little practice. A wider world.': '조금씩 말하다 보면, 더 넓은 세상으로.',
+    'Your words become a constellation. Keep a conversation going, then revisit what needs care.': '함께 익힌 표현이 나만의 별자리가 됩니다. 즐겁게 대화하고, 조금 더 연습할 표현을 다시 만나 보세요.',
+    'Ready to practise': '대화를 시작해 볼까요', 'Practice session open': '학습 세션이 열려 있어요',
+    'Use Cosmos chat or its voice controls to talk. This view does not indicate microphone status.': '코스모스의 대화창이나 음성 버튼으로 대화하세요. 이 화면은 마이크 연결 상태를 나타내지 않습니다.',
+    'Start a conversation': '가볍게 대화하기', 'Try a role-play': '상황극으로 연습',
+    'Practise review items': '복습 대화 시작', 'Finish this session': '이번 학습 마무리',
+    'Continue in Cosmos chat': '코스모스 대화에서 이어가기',
+    'Saved expressions': '함께 익힌 표현', 'Ready for review': '다시 만날 표현',
+    'Review milestones': '복습 단계 완료', 'Your learning constellation': '나의 학습 별자리',
+    'Blue: collected · Amber: due · Mint: review milestone. One star per expression, up to 80. Not a fluency score.': '파랑: 수집 · 노랑: 복습 차례 · 민트: 복습 단계 완료. 표현 하나가 별 하나이며 최대 80개를 표시합니다. 유창성 점수는 아닙니다.',
+    'Pause motion': '움직임 멈추기', 'Enable motion': '움직임 켜기', '2D view': '2D 보기',
+    'One expression to revisit': '지금 다시 만나 볼 표현',
+    'Your first expressions will appear here after practice.': '대화를 나누면 함께 익힌 첫 표현이 이곳에 남아요.',
+    'Write or say a sentence before revealing the example.': '예시를 보기 전에 문장을 적거나 말해 보세요.',
+    'Try your own sentence…': '나만의 문장으로 표현해 보세요…', 'Reveal & compare': '예시를 보고 비교하기',
+    'I recalled it': '기억해 냈어요', 'I need practice': '조금 더 연습할래요',
+    'Self-check, not an automatic assessment. Compare your answer before recording it.': '자동 채점이 아닌 자기 점검입니다. 나의 답과 예시를 비교한 뒤 기록하세요.',
+    'Nothing is due in this session. Practise to discover new expressions.': '이번 세션에 복습할 표현은 없어요. 대화하며 새로운 표현을 만나 보세요.',
+    'Expressions from your practice': '대화에서 만난 표현들',
+    'Showing the latest 8. Find more in Review and Report.': '최근 8개를 표시합니다. 복습과 리포트에서 더 확인하세요.',
+    'Updating your learning…': '학습 기록을 반영하고 있어요…', 'Learning updated': '학습 기록에 반영했어요',
+    'Could not update. Your answer is kept. Please try again.': '반영하지 못했어요. 작성한 답은 유지됩니다. 다시 시도해 주세요.',
+    'Refresh learning': '학습 기록 새로고침',
+    'Draft answers stay in this view until you close it. Only your self-check is saved.': '작성 중인 문장은 이 화면을 닫기 전까지만 유지됩니다. 자기 점검 결과만 저장합니다.',
+})
+
+
 def t(lang: str, text: str, /, **params) -> str:
     """`text`(영어 원문)를 `lang`으로. ★없으면 원문 그대로★ — 빈칸을 만들지 않는다.
 

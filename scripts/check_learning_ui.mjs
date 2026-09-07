@@ -1,0 +1,120 @@
+// 실제 Cosmos 렌더러/보안 정책과 canonical Lingua를 격리 DB에서 연결한다.
+import assert from 'node:assert/strict';
+import {mkdtemp} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+const {chromium}=await import(process.env.LINGUA_PLAYWRIGHT_MODULE||'playwright');
+const base='http://127.0.0.1:8802', folder=await mkdtemp(join(tmpdir(),'lingua-learning-ui-'));
+// CI에서 3D 경로 자체를 검증한다. 실제 GPU/음성 동시 부하 검증과는 구분한다.
+const browser=await chromium.launch({headless:true,args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const checks=[];
+try{
+  const page=await browser.newPage({viewport:{width:1440,height:1100}}), errors=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  await page.addInitScript(()=>{
+    window.framesDrawn=0;window.cspViolations=[];
+    document.addEventListener('securitypolicyviolation',e=>window.cspViolations.push(e.violatedDirective));
+    const raf=window.requestAnimationFrame;
+    window.requestAnimationFrame=fn=>raf.call(window,t=>{window.framesDrawn++;fn(t);});
+  });
+  const action=async args=>{
+    const r=await page.request.post(base+'/api/agent/action',{data:{tool:'lingua',args}});
+    const result=await r.json();assert.equal(result.ok,true);assert.ok(!String(result.result).startsWith('Lingua error'));return result;
+  };
+  await action({action:'set',language:'en',_tab:'today'});
+  await page.goto(base);
+  const frameUI=()=>page.frameLocator('#av-body iframe');
+  await frameUI().locator('#map').waitFor();
+  let frame=page.frames().find(f=>f.url().includes('/api/agent/canvas'));
+  assert.equal(await frame.evaluate(()=>THREE.REVISION),'185');
+  const initial=Number(await frameUI().locator('#total').innerText());
+  await action({action:'note_word',term:'Could we catch up?',meaning:'Reconnect with a friend',examples:['Let’s catch up over coffee.']});
+  await action({action:'note_word',term:'That sounds great',meaning:'Agree with an idea',examples:['A walk? That sounds great.']});
+  await action({action:'start'});
+  await page.waitForFunction(()=>document.querySelector('#av-body iframe')?.isConnected);
+  await frame.waitForFunction(total=>document.getElementById('total')?.textContent===String(total),initial+2,{timeout:15000});
+  checks.push('automatic actual-state refresh');
+  assert.equal(await frameUI().locator('#map canvas').count(),1);
+  assert.deepEqual(await frame.evaluate(()=>window.cspViolations),[]);
+  const stableId=await page.locator('#av-body iframe').getAttribute('id');
+  await frameUI().locator('#draft').fill('I would love to catch up this weekend.');
+  await frame.evaluate(()=>window.retainedMarker='still here');
+  await action({action:'status'});
+  await frameUI().locator('#refresh').click();
+  await frameUI().locator('#notice').filter({hasText:'반영했어요'}).waitFor();
+  assert.equal(await page.locator('#av-body iframe').getAttribute('id'),stableId);
+  assert.equal(await frame.evaluate(()=>window.retainedMarker),'still here');
+  assert.equal(await frameUI().locator('#draft').inputValue(),'I would love to catch up this weekend.');
+  checks.push('iframe, input and WebGL context preserved');
+  await frameUI().locator('#reveal').click();
+  await frameUI().locator('#answer').waitFor({state:'visible'});
+  const dueBefore=Number(await frameUI().locator('#due').innerText());
+  await frameUI().locator('#remembered').click();
+  await frame.waitForFunction(n=>Number(document.getElementById('due').textContent)===n,dueBefore-1);
+  assert.equal(await frameUI().locator('#draft').inputValue(),'');
+  checks.push('real review action updates queue and resets only the completed exercise');
+  await frameUI().locator('#draft').fill('Keep this answer after failure');
+  await frameUI().locator('#reveal').click();
+  await page.route('**/api/agent/action',route=>route.fulfill({json:{ok:false,error:'deliberate test denial'}}),{times:1});
+  await frameUI().locator('#again').click();
+  await frameUI().locator('#notice').filter({hasText:'반영하지 못했어요'}).waitFor();
+  assert.equal(await frameUI().locator('#draft').inputValue(),'Keep this answer after failure');
+  assert.equal(await frameUI().locator('#again').isEnabled(),true);
+  checks.push('permission/failure response preserves draft and retry');
+  await frameUI().locator('#motion').click();
+  await frameUI().locator('#motion').filter({hasText:'움직임 켜기'}).waitFor();
+  await frame.evaluate(()=>new Promise(r=>setTimeout(r,100)));
+  const stopped=await frame.evaluate(()=>window.framesDrawn);
+  await frame.evaluate(()=>new Promise(r=>setTimeout(r,250)));
+  assert.equal(await frame.evaluate(()=>window.framesDrawn),stopped);
+  await frameUI().locator('#motion').click();
+  await frame.evaluate(()=>new Promise(r=>setTimeout(r,250)));
+  assert.ok(await frame.evaluate(()=>window.framesDrawn)>stopped);
+  await page.locator('#agentview').evaluate(el=>el.style.display='none');
+  await frame.evaluate(()=>new Promise(r=>setTimeout(r,150)));
+  const hidden=await frame.evaluate(()=>window.framesDrawn);
+  await frame.evaluate(()=>new Promise(r=>setTimeout(r,250)));
+  assert.equal(await frame.evaluate(()=>window.framesDrawn),hidden);
+  await page.locator('#agentview').evaluate(el=>el.style.display='flex');
+  await page.waitForFunction(()=>document.querySelector('#av-body iframe').clientHeight>700);
+  checks.push('pause, resume and hidden-view rendering stop');
+  // 캡처는 가시성 계측용 강제 숨김 상태를 떠나 실제 진입 경로에서 다시 연다.
+  await page.reload();
+  await frameUI().locator('#map').waitFor();
+  frame=page.frames().find(f=>f.url().includes('/api/agent/canvas'));
+  await frameUI().locator('#motion').click();
+  await page.waitForFunction(()=>getComputedStyle(document.querySelector('#agentview')).opacity==='1');
+  assert.equal(Number(await frameUI().locator('#due').innerText()),dueBefore-1);
+  checks.push('learning state survives reload');
+  await page.locator('#av-body').evaluate(el=>el.scrollTop=0);
+  await page.screenshot({path:join(folder,'learning-desktop.png')});
+  await page.setViewportSize({width:390,height:844});
+  assert.equal(await frame.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth),0);
+  await page.locator('#av-body').evaluate(el=>el.scrollTop=0);
+  await page.screenshot({path:join(folder,'learning-mobile.png')});
+  await frameUI().locator('#exercise').scrollIntoViewIfNeeded();
+  await page.screenshot({path:join(folder,'learning-mobile-review.png')});
+  await page.emulateMedia({reducedMotion:'reduce'});
+  await frameUI().locator('#motion').filter({hasText:'움직임 켜기'}).waitFor();
+  checks.push('mobile no horizontal overflow and live reduced-motion setting');
+  const popupEvent=page.waitForEvent('popup');
+  await page.locator('#av-pop').click();
+  const popup=await popupEvent;
+  if(popup){await popup.frameLocator('iframe').locator('#map').waitFor();await popup.close();}
+  assert.deepEqual(errors,[]);
+  console.log(JSON.stringify({passed:true,checks,screenshots:folder}));
+}finally{await browser.close();}
+
+const fallbackBrowser=await chromium.launch({headless:true,args:['--disable-webgl']});
+try{
+  const page=await fallbackBrowser.newPage({viewport:{width:390,height:844},reducedMotion:'reduce'});
+  await page.goto(base);const ui=page.frameLocator('#av-body iframe');
+  await ui.locator('#fallback').waitFor({state:'visible'});
+  assert.equal(await ui.locator('#map canvas').count(),0);
+  assert.ok(await ui.locator('#flat circle').count()>0);
+  await ui.locator('#refresh').click();
+  await ui.locator('#notice').filter({hasText:'반영했어요'}).waitFor();
+  await ui.locator('#map').scrollIntoViewIfNeeded();
+  await page.screenshot({path:join(folder,'learning-2d.png')});
+  console.log(JSON.stringify({passed:true,checks:['WebGL-disabled 2D fallback with working actions'],screenshots:folder}));
+}finally{await fallbackBrowser.close();}
