@@ -849,6 +849,20 @@ TRANSLATIONS['ko'].update({
 })
 
 
+# Visual learning summaries.
+TRANSLATIONS['ko'].update({'Review self-checks': '복습 자기 점검', 'Practice distribution': '연습 단계 분포', 'Not yet practised': '아직 연습 전', 'In practice': '연습 중', 'Recorded self-checks, not a fluency score.': '기록한 자기 점검 결과입니다. 유창성 점수가 아닙니다.'})
+TRANSLATIONS['ja'].update({'Review self-checks': '復習の自己チェック', 'Practice distribution': '練習段階の分布', 'Not yet practised': 'まだ練習前', 'In practice': '練習中', 'Recorded self-checks, not a fluency score.': '記録した自己チェックです。流暢さの点数ではありません。'})
+TRANSLATIONS['de'].update({'Review self-checks': 'Selbsteinschätzung beim Wiederholen', 'Practice distribution': 'Verteilung der Übungsstände', 'Not yet practised': 'Noch nicht geübt', 'In practice': 'In Übung', 'Recorded self-checks, not a fluency score.': 'Erfasste Selbsteinschätzungen, kein Sprachniveau-Wert.'})
+TRANSLATIONS['es'].update({'Review self-checks': 'Autoevaluaciones de repaso', 'Practice distribution': 'Distribución de práctica', 'Not yet practised': 'Aún sin practicar', 'In practice': 'En práctica', 'Recorded self-checks, not a fluency score.': 'Autoevaluaciones registradas, no una puntuación de fluidez.'})
+TRANSLATIONS['fr'].update({'Review self-checks': 'Auto-évaluations de révision', 'Practice distribution': 'Répartition de la pratique', 'Not yet practised': 'Pas encore pratiqué', 'In practice': 'En cours de pratique', 'Recorded self-checks, not a fluency score.': 'Auto-évaluations enregistrées, pas un score de maîtrise.'})
+
+# Independent learning presentation, 2026-09-13.
+TRANSLATIONS["ko"].update({'Learning overview': '학습 한눈에', 'Focus on practice': '연습에 집중', 'Learning settings': '학습 설정', 'One expression. Your own words.': '표현 하나를, 나의 문장으로.', 'Recall an expression, compare the example, then choose what needs more practice.': '표현을 떠올리고 예문과 비교한 뒤, 다시 연습할지 골라 보세요.', 'Learning layout saved': '학습 화면을 저장했어요'})
+TRANSLATIONS["ja"].update({'Learning overview': '学習の全体像', 'Focus on practice': '練習に集中', 'Learning settings': '学習設定', 'One expression. Your own words.': '一つの表現を、自分の言葉で。', 'Recall an expression, compare the example, then choose what needs more practice.': '表現を思い出し、例文と比べて、もう一度練習するか選びましょう。', 'Learning layout saved': '学習画面を保存しました'})
+TRANSLATIONS["de"].update({'Learning overview': 'Lernübersicht', 'Focus on practice': 'Auf Übungen konzentrieren', 'Learning settings': 'Lerneinstellungen', 'One expression. Your own words.': 'Ein Ausdruck. Deine eigenen Worte.', 'Recall an expression, compare the example, then choose what needs more practice.': 'Erinnere dich an einen Ausdruck, vergleiche das Beispiel und entscheide, was du weiter üben möchtest.', 'Learning layout saved': 'Lernansicht gespeichert'})
+TRANSLATIONS["es"].update({'Learning overview': 'Resumen del aprendizaje', 'Focus on practice': 'Centrarse en practicar', 'Learning settings': 'Ajustes de aprendizaje', 'One expression. Your own words.': 'Una expresión. Tus propias palabras.', 'Recall an expression, compare the example, then choose what needs more practice.': 'Recuerda una expresión, compárala con el ejemplo y decide qué practicar más.', 'Learning layout saved': 'Vista de aprendizaje guardada'})
+TRANSLATIONS["fr"].update({'Learning overview': 'Vue d’ensemble', 'Focus on practice': 'Se concentrer sur la pratique', 'Learning settings': 'Réglages d’apprentissage', 'One expression. Your own words.': 'Une expression. Vos propres mots.', 'Recall an expression, compare the example, then choose what needs more practice.': 'Retrouvez une expression, comparez l’exemple et choisissez ce qu’il faut retravailler.', 'Learning layout saved': 'Vue d’apprentissage enregistrée'})
+
 def t(lang: str, text: str, /, **params) -> str:
     """`text`(영어 원문)를 `lang`으로. ★없으면 원문 그대로★ — 빈칸을 만들지 않는다.
 

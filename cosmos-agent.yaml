@@ -7,7 +7,7 @@
 # to readers of that language, which is exactly what v0.4.0 did.
 id: wangjacsi/cosmos-lingua
 type: feature
-version: 0.6.0
+version: 0.6.1
 contract: plugin/v1
 title: Lingua Live — live language practice
 # ★설치 화면은 코드를 받기 **전에** 그려진다★ — 그래서 협업하는 방식(무엇을 기억하고

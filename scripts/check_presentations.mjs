@@ -1,0 +1,46 @@
+// Real Cosmos renderer, synthetic learning state; no real user profiles or services.
+import assert from 'node:assert/strict';
+import {mkdir,writeFile} from 'node:fs/promises';
+import {resolve,join} from 'node:path';
+const {chromium}=await import(process.env.LINGUA_PLAYWRIGHT_MODULE||'playwright');
+const out=resolve(process.argv[2]||'/tmp/lingua-presentations');await mkdir(out,{recursive:true});
+const base='http://127.0.0.1:8802';
+const browser=await chromium.launch({headless:true,args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const context=await browser.newContext({viewport:{width:1440,height:1100}});
+await context.addInitScript(()=>{try{if(window===top)sessionStorage.setItem('cosmos_token','fixture-only')}catch{};window.draws=0;const raf=window.requestAnimationFrame;window.requestAnimationFrame=fn=>raf.call(window,t=>{window.draws++;fn(t)})});
+const errors=[],external=[];
+context.on('page',p=>{p.on('pageerror',e=>errors.push(e.message));p.on('request',r=>{if(/^https?:/.test(r.url())&&!r.url().startsWith(base+'/'))external.push(r.url())})});
+try{
+ const page=await context.newPage();
+ const action=async args=>{const r=await page.request.post(base+'/api/agent/action',{data:{tool:'lingua',args}});const result=await r.json();assert.equal(result.ok,true);assert.ok(!String(result.result).startsWith('Lingua error'));};
+ await action({action:'layout',view_mode:'overview',_tab:'today'});
+ await action({action:'note_word',term:'That sounds great',meaning:'제안에 기분 좋게 동의하기',examples:['A walk? That sounds great. | 산책요? 좋아요.']});
+ await action({action:'start'});
+ await page.goto(base);const ui=page.frameLocator('#av-body iframe');await ui.locator('#draft').waitFor();
+ await page.waitForFunction(()=>getComputedStyle(document.querySelector('#agentview')).opacity==='1');
+ await page.screenshot({path:join(out,'lingua-overview.png')});
+ const frame=page.frames().find(f=>f.url().includes('/api/agent/canvas'));
+ await frame.evaluate(()=>window.retainedMarker='same');await ui.locator('#draft').fill('That sounds great. Let’s go for a walk.');
+ await ui.locator('#practice').click();await ui.locator('.world.practice').waitFor();
+ assert.equal(await ui.locator('#draft').inputValue(),'That sounds great. Let’s go for a walk.');
+ assert.equal(await frame.evaluate(()=>window.retainedMarker),'same');
+ assert.equal(await ui.locator('.learning-charts').isVisible(),false);
+ const draws=await frame.evaluate(()=>window.draws);await page.waitForTimeout(5500);assert.ok((await frame.evaluate(()=>window.draws))-draws<5,'Hidden constellation should stop rendering');assert.equal(await ui.locator('#draft').inputValue(),'That sounds great. Let’s go for a walk.');
+ await ui.locator('#reveal').click();await page.screenshot({path:join(out,'lingua-practice.png')});
+ const popPromise=page.waitForEvent('popup');await page.locator('#av-browser').click();const popup=await popPromise;
+ await popup.frameLocator('#av-body iframe').locator('.world.practice').waitFor();
+ assert.match(popup.url(),/#agent=lingua&surface=browser$/);
+ assert.equal(await popup.locator('body').getAttribute('data-solo'),'1');
+ assert.equal(new URL(popup.url()).search,'');
+ await popup.screenshot({path:join(out,'lingua-independent.png')});
+ await popup.setViewportSize({width:390,height:844});
+ const pu=popup.frameLocator('#av-body iframe');
+ assert.equal(await pu.locator('body').evaluate(e=>document.documentElement.scrollWidth-document.documentElement.clientWidth),0);
+ await popup.screenshot({path:join(out,'lingua-mobile.png')});
+ await popup.close();assert.equal(page.isClosed(),false);
+ await page.reload();await ui.locator('.world.practice').waitFor();
+ await ui.locator('#settings').click();await page.frameLocator('#av-body iframe').locator('#profile').waitFor();
+ assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
+ const report={synthetic:true,checks:['overview and practice layouts','draft and iframe preserved through layout and polling','hidden constellation stops animation frames','saved layout after reload and in external-browser destination','independent route without chat shell or URL token','390px without overflow','settings reached from learning view','no browser errors or external HTTP requests'],limits:['Direct preview action adapter; real installer and dispatch checked separately','Synthetic browser identity; no native OS GUI or real voice/video/account validation'],screenshots:['lingua-overview.png','lingua-practice.png','lingua-independent.png','lingua-mobile.png']};
+ await writeFile(join(out,'lingua-presentations-validation.json'),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report));
+}finally{await browser.close()}

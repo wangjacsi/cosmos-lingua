@@ -281,6 +281,87 @@ def test_settings_form_escapes_user_content_and_has_working_contract():
 def test_viewer_can_open_beside_cosmos_without_forcing_a_window():
     from cosmos.contracts.view import chosen_space, spaces_of
     agent = LinguaLive()
-    assert spaces_of(agent) == ("screen", "window")
+    assert spaces_of(agent) == ("screen", "window", "browser")
     assert chosen_space(agent, "window") == "window"
     assert chosen_space(agent, "screen") == "screen"
+
+
+def test_visual_review_counts_use_recorded_answers_not_fake_proficiency():
+    from lingua_viewer import block
+    data={'items':[{'id':'a','hits':2,'misses':1,'box':1},
+                   {'id':'b','hits':0,'misses':0,'box':0},
+                   {'id':'c','hits':5,'misses':2,'box':5,'graduated':True}],
+          'language':'en','goal':'','session':2}
+    snapshot=block(data,[], 'en','English')['state']
+    assert snapshot['recall']=={'hits':7,'misses':3}
+    assert snapshot['stages']==[1,1,1]
+    assert sum(snapshot['stages'])==snapshot['total']
+
+
+def test_settings_entry_overrides_saved_tab_without_changing_profile():
+    agent, ctx = LinguaLive(), Context()
+    agent.run(ctx, action="status", _tab="today")
+    before = ctx.load_agent_state("lingua-live")
+    assert agent.view(ctx, **agent.settings_at)["params"]["tab"] == "settings"
+    assert ctx.load_agent_state("lingua-live") == before
+
+
+def test_layout_is_user_scoped_and_does_not_change_learning_evidence():
+    agent, ctx = LinguaLive(), Context()
+    agent.run(ctx, action="set", goal="Travel")
+    agent.run(ctx, action="note_word", term="hello")
+    before = agent._load(ctx)
+    agent.run(ctx, action="layout", view_mode="practice")
+    after = LinguaLive().view(ctx)["blocks"][-1]
+    assert after["state"]["view_mode"] == "practice"
+    assert after["state"]["total"] == 1 and after["state"]["goal"] == "Travel"
+    assert agent._load(ctx)["last_practised"] == before["last_practised"]
+    assert agent.view(Context("other"))["blocks"][-1]["state"]["view_mode"] == "overview"
+
+
+@pytest.mark.parametrize("mode", [None, "", "unknown", []])
+def test_invalid_layout_preserves_preference(mode):
+    agent, ctx = LinguaLive(), Context()
+    agent.run(ctx, action="layout", view_mode="practice")
+    assert agent.run(ctx, action="layout", view_mode=mode).startswith("Lingua error")
+    assert agent.view(ctx)["blocks"][-1]["state"]["view_mode"] == "practice"
+
+
+@pytest.mark.parametrize("disable", ["turn", "agent"])
+def test_late_analysis_is_discarded_after_turn_hook_disabled(monkeypatch, disable):
+    from cosmos.contracts import hooks
+    agent, ctx = LinguaLive(), Context()
+    agent.run(ctx, action="start")
+    before = agent._load(ctx)
+    def analyze(*args):
+        if disable == "turn":
+            hooks.save(agent, {"turn": False}, user_id=ctx.user_id)
+        else:
+            from cosmos.core import agents
+            agents.set_enabled(agent.name, False, user_id=ctx.user_id)
+        return {"words": [{"term": "unwanted", "meaning": "late"}], "coach": "late coach"}
+    monkeypatch.setattr(agent, "_ask_analyst", analyze)
+    agent.observe_turn(ctx, "user", "A sufficiently long learner sentence")
+    assert agent._load(ctx)["items"] == before["items"]
+    assert not ctx.nudges
+    monkeypatch.setattr(agent, "_ask_analyst", lambda *a: pytest.fail("Disabled hook called"))
+    agent.observe_turn(ctx, "user", "Another sufficiently long sentence")
+
+
+def test_analysis_drops_result_when_memory_permission_is_revoked(monkeypatch):
+    from cosmos.core import permissions, userstate
+    agent,ctx=LinguaLive(),Context(user_id='late-memory-revoke',lang='en')
+    with userstate.scope(ctx.user_id):
+        agent.run(ctx,action='start')
+        before=agent._load(ctx)
+        def analyze(*args):
+            permissions.set_state('memory','deny')
+            return {'words':[{'term':'late','meaning':'must not be saved'}],'coach':'late coach'}
+        monkeypatch.setattr(agent,'_ask_analyst',analyze)
+        try:
+            agent.observe_turn(ctx,'user','A sufficiently long learner utterance.')
+            assert agent._load(ctx)['items']==before['items'] and not ctx.nudges
+            monkeypatch.setattr(agent,'_ask_analyst',lambda *a:pytest.fail('revoked analysis started'))
+            agent.observe_turn(ctx,'user','Another sufficiently long learner utterance.')
+        finally:
+            permissions.set_state('memory','allow')

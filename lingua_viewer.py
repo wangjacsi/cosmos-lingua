@@ -5,6 +5,9 @@ from pathlib import Path
 from lingua_i18n import t
 
 COPY = {
+    "overview": "Learning overview", "practice": "Focus on practice", "settings": "Learning settings",
+    "practice_title": "One expression. Your own words.",
+    "practice_intro": "Recall an expression, compare the example, then choose what needs more practice.",
     "eyebrow": "YOUR CONVERSATION SPACE", "title": "A little practice. A wider world.",
     "intro": "Your words become a constellation. Keep a conversation going, then revisit what needs care.",
     "goal": "Learning goal", "empty_goal": "Choose your own goal in Settings",
@@ -12,6 +15,9 @@ COPY = {
     "voice": "Use Cosmos chat or its voice controls to talk. This view does not indicate microphone status.",
     "chat": "Start a conversation", "scene": "Try a role-play", "review": "Practise review items",
     "finish": "Finish this session", "continue": "Continue in Cosmos chat",
+    "recall_chart": "Review self-checks", "stages": "Practice distribution",
+    "new_stage": "Not yet practised", "practice_stage": "In practice",
+    "recall_help": "Recorded self-checks, not a fluency score.",
     "saved": "Saved expressions", "due": "Ready for review", "graduated": "Review milestones",
     "map": "Your learning constellation", "legend": "Blue: collected · Amber: due · Mint: review milestone. One star per expression, up to 80. Not a fluency score.",
     "quiet": "Pause motion", "motion": "Enable motion", "flat": "2D view",
@@ -35,7 +41,7 @@ def html():
     return (Path(__file__).parent / 'views/learning.html').read_text(encoding='utf-8')
 
 
-def block(data, due, ui, language_label):
+def block(data, due, ui, language_label, view_mode="overview"):
     items = data['items']
     due_ids = {i['id'] for i in due}
 
@@ -46,11 +52,17 @@ def block(data, due, ui, language_label):
 
     return {"type": "html", "key": "lingua-learning-v1", "label": t(ui, 'Your learning constellation'),
             "libraries": ['three'], "height": 1000, "html": html(), "state": {
+                "view_mode": view_mode if view_mode in ("overview", "practice") else "overview",
                 "copy": {key: t(ui, value) for key, value in COPY.items()},
                 "language": data['language'], "language_label": language_label,
                 "goal": data['goal'], "active": bool(data.get('active')), "session": data['session'],
                 "total": len(items), "due": len(due),
                 "graduated": sum(bool(i.get('graduated')) for i in items),
+                "recall": {"hits": sum(max(0, int(i.get('hits', 0))) for i in items),
+                           "misses": sum(max(0, int(i.get('misses', 0))) for i in items)},
+                "stages": [sum(not i.get('graduated') and not i.get('box') for i in items),
+                           sum(not i.get('graduated') and bool(i.get('box')) for i in items),
+                           sum(bool(i.get('graduated')) for i in items)],
                 "stars": [{"id": i['id'], "kind": 'graduated' if i.get('graduated') else
                            'due' if i['id'] in due_ids else 'saved'} for i in items[-80:]],
                 "focus": card(due[0]) if due else None,

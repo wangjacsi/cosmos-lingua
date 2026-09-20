@@ -1,4 +1,20 @@
+## 0.6.1 — 2026-09-20
+
+- Preserve current permissions and installation decisions during background analysis.
+- Add saved workspace layouts, browser placement and review self-check presentation.
+- Validate install, remove and reinstall with retained learning preferences in isolated state.
+
 # Changelog
+
+## Unreleased
+
+- Make the default README an English user guide; retain earlier Korean implementation notes in a separate archive.
+
+- Add saved, per-user overview/practice layouts; put the exercise before metrics in focus mode and stop hidden constellation animation.
+- Declare integrated, independent-window and external-browser display on the matching development Cosmos core/shell.
+- Fix viewer imports after archive installation and honor the installed-list settings entry.
+- Declare memory access for views so off/permission gates apply; discard late corrections after the agent or turn hook is disabled.
+- Validate source archive install/off/on/remove/reinstall, preserved profiles/expressions/placement, 33 agent tests and synthetic browser UI. Real voice/video, accounts and published updates remain pending.
 
 ## 0.6.0 — 2026-09-08
 

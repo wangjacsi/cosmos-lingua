@@ -32,7 +32,9 @@ import threading
 import time
 import uuid
 
-from cosmos.contracts import Plugin, ToolContext
+from cosmos.contracts import Plugin, ToolContext, hooks
+
+import lingua_viewer
 
 from lingua_i18n import t as _t          # 화면 어휘의 번역(영어 원문 → 사용자 언어)
 
@@ -383,7 +385,7 @@ def days_between(then: str, now_ts: float, *, parse=None) -> float:
 
 class LinguaLive(Plugin):
     name = "lingua"
-    version = "0.6.0"
+    version = "0.6.1"
     description = (
         "Real-time language tutor. Call action=start ONCE at the beginning of a language-"
         "practice conversation to load the learner's profile and the teaching rules you "
@@ -400,7 +402,8 @@ class LinguaLive(Plugin):
         "properties": {
             "action": {"type": "STRING",
                        "description": "start | note_error | note_word | review_answer | "
-                                      "set | status | finish"},
+                                      "set | status | finish | layout"},
+            "view_mode": {"type": "STRING", "description": "overview | practice (layout action only)"},
             "language": {"type": "STRING", "description": "Target language code: " + ", ".join(LANGUAGES)},
             "language_order": {"type": "ARRAY", "items": {"type": "STRING"},
                                "description": "User's planned language order; does not start or advance lessons automatically"},
@@ -443,11 +446,12 @@ class LinguaLive(Plugin):
     # 코스모스는 이 사람이 무엇을 배우는지조차 몰랐다. 그래서 대화 중에 스페인어
     # 얘기가 나와도 잇지 못했고, 이어가자고 할 재료도 없었다(원칙 0 ③).
     capabilities = ["memory"]
+    view_capabilities = ("memory",)
     requires_desktop = False
     view_title = "🗣 Lingua Live"
     # 표현은 에이전트가, 표시 위치는 사용자가 선택한다. 대화를 덮지 않고
     # Cosmos 옆에 학습 뷰어를 따로 둘 수 있는 기존 공통 계약을 사용한다.
-    space = ("screen", "window")
+    space = ("screen", "window", "browser")
 
     # ★설정은 이 화면의 Settings 탭에 있다★ (v0.5.2 · 코스모스 계약 2026-09-03)
     #
@@ -785,6 +789,13 @@ class LinguaLive(Plugin):
         ctx.write_log(f"[lingua] {', '.join(changed) or _t(ctx.lang, 'no change')}")
         return f"Settings updated: {', '.join(changed) or '(none)'}. " + self._brief(data)
 
+    def _do_layout(self, ctx, data, args) -> str:
+        mode = args.get("view_mode")
+        if mode not in ("overview", "practice"):
+            raise ValueError("Choose overview or practice")
+        ctx.save_agent_state("lingua-live", {"view_mode": mode}, key="presentation")
+        return _t(ctx.lang, "Learning layout saved")
+
     def _do_status(self, ctx, data, args) -> str:
         return self._brief(data)
 
@@ -1121,12 +1132,21 @@ class LinguaLive(Plugin):
     _busy: set[str] = set()
     _pending: dict[str, tuple] = {}
 
+    def _may_analyze(self, ctx):
+        from cosmos.core import permissions, userstate, agents
+        with userstate.scope(ctx.user_id):
+            return (hooks.enabled(self, "turn", ctx.user_id)
+                    and not agents.is_removed(self.name, user_id=ctx.user_id)
+                    and "memory" not in permissions.effective_blocked())
+
     def observe_turn(self, ctx: ToolContext, role: str, text: str) -> None:
         """사용자 발화 한 턴을 **대화와 무관하게** 분석해 화면에 카드를 쌓는다.
 
         여기서 무엇을 하든 튜터는 계속 말한다. 이것이 v0.1.0과의 결정적 차이다:
         예전엔 교정을 툴 호출로 해서, 꼼꼼할수록 대화가 끊겼다.
         """
+        if not self._may_analyze(ctx):
+            return
         text = (text or "").strip()
         if role != "user" or len(text) < MIN_ANALYZE_CHARS:
             return
@@ -1150,7 +1170,7 @@ class LinguaLive(Plugin):
                 return
             with _LOCK:
                 data = self._load(ctx)       # 그 사이 바뀌었을 수 있다
-                if not data.get("active") or data.get("session_token") != token:
+                if not self._may_analyze(ctx) or not data.get("active") or data.get("session_token") != token:
                     return  # 종료/언어 전환/새 세션 뒤에 도착한 분석은 버린다
                 added = self._absorb(data, report, text)
                 data["last_practised"] = _now()
@@ -1262,7 +1282,7 @@ class LinguaLive(Plugin):
         data = self._load(ctx)
         # 탭은 **상태**다(params가 아니라). 액션이 상태를 바꾸고 뷰가 그것을 읽는 한 방향
         # 흐름이라야, 셸이 무엇을 되돌려 주든 화면과 상태가 어긋나지 않는다.
-        tab = str(data.get("view_tab") or params.get("tab") or "today")
+        tab = str(params.get("_tab") or data.get("view_tab") or params.get("tab") or "today")
         lang = LANGUAGES[data["language"]]
         code = data["language"]
         ui = ctx.lang                     # ★사용자가 **읽는** 언어(배우는 언어가 아니다)★
@@ -1295,8 +1315,9 @@ class LinguaLive(Plugin):
         elif tab == "report":
             blocks += self._report_blocks(data, ui)
         else:
-            from lingua_viewer import block
-            blocks.append(block(data, due, ui, _t(ui, lang['label'])))
+            presentation = ctx.load_agent_state("lingua-live", key="presentation") or {}
+            mode = presentation.get("view_mode", "overview") if isinstance(presentation, dict) else "overview"
+            blocks.append(lingua_viewer.block(data, due, ui, _t(ui, lang['label']), view_mode=mode))
 
         graduated = sum(1 for i in data["items"] if i.get("graduated"))
         total = len(data["items"])

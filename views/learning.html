@@ -15,8 +15,18 @@ button:hover{background:#243e50}button:focus-visible,textarea:focus-visible{outl
 @media(max-width:440px){.world{padding:18px}.row>button{flex:1}.metrics{gap:8px}.metric strong{font-size:24px}.metric span{font-size:10px}.map{height:220px}.focus{padding:16px}.focus .row{flex-direction:column;align-items:stretch}.focus .row>button{flex:auto}}
 @media(max-width:740px){.learning-grid{grid-template-columns:minmax(0,1fr)}.focus{grid-row:1}.active .topline{margin-bottom:14px}.active h1{font-size:22px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+.learning-charts{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:20px 0}.chart-panel{border:1px solid var(--panel-3);border-radius:16px;padding:16px;background:var(--panel)}.chart-panel h2{font-size:14px;margin:0 0 10px}.recall-grid{display:flex;align-items:center;gap:18px}.recall-ring{width:132px;height:132px;flex-shrink:0}.recall-ring circle{fill:none;stroke-width:12}.recall-ring .base{stroke:var(--panel-3)}.recall-ring .hits{stroke:var(--signal);transform:rotate(-90deg);transform-origin:70px 70px;transition:stroke-dasharray .65s ease}.recall-ring text{fill:var(--fg-hi);font-size:26px;font-weight:600;text-anchor:middle}.recall-legend{font-size:12px}.recall-legend p{margin:6px 0}.recall-legend strong{font-size:20px;margin-right:8px}.recall-legend .good{color:var(--signal)}.recall-legend .again{color:var(--flare)}.stage-row{margin:12px 0;font-size:11px;display:grid;grid-template-columns:110px 1fr 25px;gap:10px;align-items:center}.stage-track{height:12px;background:var(--abyss);border-radius:4px;overflow:hidden}.stage-fill{height:100%;border-radius:4px;transform-origin:left;animation:chart-grow .65s ease-out both}.stage-row:nth-child(1) .stage-fill{background:var(--beam)}.stage-row:nth-child(2) .stage-fill{background:var(--flare)}.stage-row:nth-child(3) .stage-fill{background:var(--signal)}.quiet *{animation:none!important;transition:none!important}@keyframes chart-grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}@media(max-width:740px){.learning-charts{grid-template-columns:1fr}.recall-ring{width:120px;height:120px}.stage-row{grid-template-columns:100px 1fr 25px}}@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}.layout{margin-bottom:24px}.layout [aria-pressed="true"]{border-color:var(--signal);background:var(--panel-3)}
+.world.practice .learning-charts,.world.practice .constellation,.world.practice .recent{display:none}
+.world.practice .learning-grid{grid-template-columns:minmax(0,1fr);max-width:780px;margin:auto}
+.world.practice{display:flex;flex-direction:column}.world.practice .topline,.world.practice .intro{display:none}
+.world.practice .layout{margin-bottom:14px}.world.practice .goal{margin:10px 0 18px}
+.world.practice .learning-grid{order:2;width:100%}.world.practice .metrics{order:3;margin:18px 0}
+.world.practice>.row:not(.layout),.world.practice>p[data-copy="voice"]{order:4}
+.world.practice h1{font-size:clamp(24px,4vw,32px)}.world.practice .focus{padding:clamp(20px,4vw,36px)}
+.world.practice .prompt{font-size:clamp(24px,4vw,34px)}.world.practice textarea{min-height:120px}
 </style>
 <main class="world">
+  <nav class="row layout" aria-label="Learning layout"><button id="overview" data-copy="overview" aria-pressed="true"></button><button id="practice" data-copy="practice" aria-pressed="false"></button><button id="settings" class="quiet" data-copy="settings"></button></nav>
   <div class="topline"><span class="eyebrow" data-copy="eyebrow"></span><span id="language" class="badge"></span></div>
   <h1 data-copy="title"></h1><p class="subtle intro" data-copy="intro"></p>
   <div class="goal"><small data-copy="goal"></small><p id="goal"></p></div>
@@ -24,6 +34,7 @@ button:hover{background:#243e50}button:focus-visible,textarea:focus-visible{outl
   <p class="subtle" data-copy="voice"></p>
   <div class="row" style="margin-top:16px"><button class="primary" id="chat" data-copy="chat"></button><button id="scene" data-copy="scene"></button><button id="review" data-copy="review"></button><button id="finish" data-copy="finish" hidden></button></div>
   <div class="metrics"><div class="metric"><strong id="total">0</strong><span data-copy="saved"></span></div><div class="metric"><strong id="due">0</strong><span data-copy="due"></span></div><div class="metric"><strong id="graduated">0</strong><span data-copy="graduated"></span></div></div>
+  <div class="learning-charts"><section class="chart-panel"><h2 data-copy="recall_chart"></h2><div class="recall-grid"><svg id="recall-chart" class="recall-ring" viewBox="0 0 140 140" role="img"><circle class="base" cx="70" cy="70" r="52"/><circle id="recall-arc" class="hits" cx="70" cy="70" r="52" stroke-dasharray="0 327"/><text id="recall-rate" x="70" y="79">—</text></svg><div class="recall-legend"><p class="good"><strong id="recall-hits">0</strong><span data-copy="remembered"></span></p><p class="again"><strong id="recall-misses">0</strong><span data-copy="again"></span></p></div></div><p class="legend" data-copy="recall_help"></p></section><section class="chart-panel"><h2 data-copy="stages"></h2><div id="stage-chart"></div></section></div>
   <div class="learning-grid"><section class="constellation"><div class="maphead"><h2 data-copy="map"></h2><div class="row"><span id="fallback" class="subtle" hidden data-copy="flat"></span><button id="motion" class="quiet"></button></div></div>
   <div class="map" id="map" role="img" aria-describedby="legend"><svg id="flat" viewBox="0 0 640 260" aria-hidden="true"></svg></div>
   <p class="legend" id="legend" data-copy="legend"></p></section>
@@ -40,7 +51,7 @@ button:hover{background:#243e50}button:focus-visible,textarea:focus-visible{outl
 <script>
 (() => {
   const $ = id => document.getElementById(id), reduced = matchMedia('(prefers-reduced-motion: reduce)');
-  let state, busy=false, focusKey='', visible=true, disposed=false, paused=reduced.matches;
+  let chartSignature='',state, busy=false, focusKey='', visible=true, disposed=false, paused=reduced.matches;
   let renderer, scene, camera, group, geometries=[], materials=[], lastFrame=0, signature='';
   const colors={saved:0x7eb8e3,due:0xf0bc78,graduated:0x9be7c5};
   const positions = stars => stars.map((star,i) => {
@@ -75,7 +86,8 @@ button:hover{background:#243e50}button:focus-visible,textarea:focus-visible{outl
     renderer.render(scene,camera);
   }
   function loop(){
-    if(renderer) renderer.setAnimationLoop(visible && !paused && !disposed && state?.stars.length ? draw : null);
+    document.body.classList.toggle('quiet',paused||reduced.matches||!visible);
+    if(renderer) renderer.setAnimationLoop(visible && !paused && !disposed && state?.view_mode!=='practice' && state?.stars.length ? draw : null);
     if(state)$('motion').textContent=state.copy[paused?'motion':'quiet'];draw();
   }
   function stars(){
@@ -97,14 +109,28 @@ button:hover{background:#243e50}button:focus-visible,textarea:focus-visible{outl
     for(const value of values||[]){const p=document.createElement('p');p.className='example';p.textContent=value;container.append(p);}
   }
   function controls(){
-    for(const id of ['chat','scene','review','finish','remembered','again','refresh'])$(id).disabled=busy;
+    for(const id of ['chat','scene','review','finish','remembered','again','refresh','overview','practice','settings'])$(id).disabled=busy;
     $('chat').hidden=state.active;$('scene').hidden=state.active;$('review').hidden=state.active;
     $('finish').hidden=!state.active;
+  }
+  function charts(){
+    const sig=JSON.stringify([state.recall,state.stages,state.copy]);if(sig===chartSignature)return;chartSignature=sig;
+    const hits=state.recall?.hits||0,misses=state.recall?.misses||0,total=hits+misses,portion=total?hits/total:0;
+    $('recall-arc').setAttribute('stroke-dasharray',`${portion*327} 327`);text('recall-rate',total?Math.round(portion*100)+'%':'—');text('recall-hits',hits);text('recall-misses',misses);
+    $('recall-chart').setAttribute('aria-label',state.copy.recall_chart+': '+state.copy.remembered+' '+hits+', '+state.copy.again+' '+misses);
+    $('stage-chart').replaceChildren();const labels=[state.copy.new_stage,state.copy.practice_stage,state.copy.graduated];
+    (state.stages||[]).forEach((count,i)=>{const row=document.createElement('div');row.className='stage-row';const label=document.createElement('span');label.textContent=labels[i];const track=document.createElement('div');track.className='stage-track';const fill=document.createElement('div');fill.className='stage-fill';fill.style.width=(state.total?count/state.total*100:0)+'%';track.append(fill);const value=document.createElement('strong');value.textContent=count;row.append(label,track,value);$('stage-chart').append(row);});
   }
   function update(next){
     if(!next || disposed)return;state=next;
     document.querySelector('.world').classList.toggle('active',state.active);
+    document.querySelector('.world').classList.toggle('practice',state.view_mode==='practice');
+    for(const id of ['overview','practice'])$(id).setAttribute('aria-pressed',String(state.view_mode===id));
     document.querySelectorAll('[data-copy]').forEach(el=>el.textContent=state.copy[el.dataset.copy]||'');
+    if(state.view_mode==='practice'){
+      document.querySelector('h1').textContent=state.copy.practice_title;
+      document.querySelector('.intro').textContent=state.copy.practice_intro;
+    }
     text('language',state.language_label);text('goal',state.goal||state.copy.empty_goal);
     text('status',state.copy[state.active?'active':'ready']);text('session',state.copy.session+' '+state.session);
     text('total',state.total);text('due',state.due);text('graduated',state.graduated);
@@ -115,16 +141,19 @@ button:hover{background:#243e50}button:focus-visible,textarea:focus-visible{outl
     if(state.focus){text('prompt',state.focus.prompt);text('answer-text',state.focus.answer);text('answer-note',state.focus.note);examples($('answer-examples'),state.focus.examples);}
     $('empty').hidden=!!state.recent.length;$('showing').hidden=state.total<=8;$('cards').replaceChildren();
     for(const card of state.recent){const article=document.createElement('article'),title=document.createElement('strong'),note=document.createElement('p');title.textContent=card.answer;note.textContent=card.note;article.append(title,note);const ex=document.createElement('div');examples(ex,card.examples);article.append(ex);$('cards').append(article);}
-    controls();stars();loop();size();
+    controls();charts();stars();loop();size();
   }
   async function call(args){
     if(busy||disposed)return;busy=true;controls();text('notice',state.copy.saving);
-    try{const result=await cosmos.call('lingua',{...args,language:state.language,_tab:'today'});
+    try{const result=await cosmos.call('lingua',{language:state.language,_tab:'today',...args});
       if(String(result).startsWith('Lingua error:') || String(result).startsWith('No review'))throw new Error(result);
       text('notice',state.copy.saved_notice);
     }catch(e){text('notice',state.copy.error);}
     finally{busy=false;if(!disposed){controls();size();}}
   }
+  $('overview').onclick=()=>call({action:'layout',view_mode:'overview'});
+  $('practice').onclick=()=>call({action:'layout',view_mode:'practice'});
+  $('settings').onclick=()=>call({action:'status',_tab:'settings'});
   $('chat').onclick=()=>call({action:'start',mode:'chat'});
   $('scene').onclick=()=>call({action:'start',mode:'scene'});
   $('review').onclick=()=>call({action:'start',mode:'review'});
