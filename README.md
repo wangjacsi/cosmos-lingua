@@ -1,5 +1,10 @@
 # Lingua Live
 
+> **Built into Cosmos since 0.4.1.** Every Cosmos install now ships Lingua —
+> nobody has to find it in the market. This repository stays the source: a
+> newer version published here still reaches people through the market and
+> replaces the built-in copy.
+
 Practise real conversations and return to the expressions you want to remember.
 Lingua keeps your learning goals and progress for each language, so you can pick
 up where you left off without explaining your background again.
