@@ -1,9 +1,9 @@
 # Lingua Live
 
-> **Built into Cosmos since 0.4.1.** Every Cosmos install now ships Lingua —
-> nobody has to find it in the market. This repository stays the source: a
-> newer version published here still reaches people through the market and
-> replaces the built-in copy.
+> **Built into Cosmos since 0.4.1.** Every Cosmos install ships Lingua, and they are
+> not in the market: the market is for agents built by others. Cosmos ships its own copy and updates it
+> with the app; it never installs this repository from the market. This repository is the development
+> source.
 
 Practise real conversations and return to the expressions you want to remember.
 Lingua keeps your learning goals and progress for each language, so you can pick
